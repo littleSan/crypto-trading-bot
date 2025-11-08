@@ -46,7 +46,7 @@
 
 ```bash
 # 克隆项目
-git clone https://github.com/YourRepo/TradingAgents.git
+git clone https://github.com/Oakshen/crypto-trading-bot.git
 cd TradingAgents
 
 # 使用 uv 创建虚拟环境（强烈推荐）
