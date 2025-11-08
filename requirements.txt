@@ -1,3 +1,4 @@
+# 基础依赖（从 requirements.txt 继承）
 typing-extensions
 langchain-openai
 langchain-experimental
@@ -24,3 +25,9 @@ rich
 questionary
 langchain_anthropic
 langchain-google-genai
+
+# 加密货币交易专属依赖
+ccxt>=4.0.0  # 加密货币交易所统一接口
+python-dotenv>=1.0.0  # 环境变量管理
+schedule>=1.2.0  # 定时任务
+

@@ -16,6 +16,14 @@ from .alpha_vantage import (
     get_news as get_alpha_vantage_news
 )
 from .alpha_vantage_common import AlphaVantageRateLimitError
+# Import crypto-specific modules
+from .crypto_ccxt import (
+    get_crypto_ohlcv,
+    get_crypto_indicators,
+    get_funding_rate,
+    get_order_book,
+    get_market_info
+)
 
 # Configuration and routing logic
 from .config import get_config
@@ -51,6 +59,16 @@ TOOLS_CATEGORIES = {
             "get_insider_sentiment",
             "get_insider_transactions",
         ]
+    },
+    "crypto_data": {
+        "description": "Cryptocurrency-specific data",
+        "tools": [
+            "get_crypto_data",
+            "get_crypto_indicators",
+            "get_crypto_funding_rate",
+            "get_crypto_order_book",
+            "get_crypto_market_info"
+        ]
     }
 }
 
@@ -58,7 +76,8 @@ VENDOR_LIST = [
     "local",
     "yfinance",
     "openai",
-    "google"
+    "google",
+    "ccxt"  # For crypto data
 ]
 
 # Mapping of methods to their vendor-specific implementations
@@ -113,6 +132,22 @@ VENDOR_METHODS = {
         "alpha_vantage": get_alpha_vantage_insider_transactions,
         "yfinance": get_yfinance_insider_transactions,
         "local": get_finnhub_company_insider_transactions,
+    },
+    # crypto_data
+    "get_crypto_data": {
+        "ccxt": get_crypto_ohlcv,
+    },
+    "get_crypto_indicators": {
+        "ccxt": get_crypto_indicators,
+    },
+    "get_crypto_funding_rate": {
+        "ccxt": get_funding_rate,
+    },
+    "get_crypto_order_book": {
+        "ccxt": get_order_book,
+    },
+    "get_crypto_market_info": {
+        "ccxt": get_market_info,
     },
 }
 
@@ -242,3 +277,18 @@ def route_to_vendor(method: str, *args, **kwargs):
     else:
         # Convert all results to strings and concatenate
         return '\n'.join(str(result) for result in results)
+
+
+def route_tool_call(method: str, **kwargs):
+    """
+    Route tool calls to appropriate vendor implementation.
+    This is a simplified version of route_to_vendor specifically for @tool decorated functions.
+    
+    Args:
+        method: The method name (e.g., 'get_crypto_data')
+        **kwargs: Keyword arguments to pass to the method
+    
+    Returns:
+        The result from the vendor implementation
+    """
+    return route_to_vendor(method, **kwargs)

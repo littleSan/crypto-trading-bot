@@ -3,7 +3,7 @@ import time
 import json
 
 
-def create_bull_researcher(llm, memory):
+def create_bull_researcher(llm, memory, config=None):
     def bull_node(state) -> dict:
         investment_debate_state = state["investment_debate_state"]
         history = investment_debate_state.get("history", "")
@@ -16,7 +16,10 @@ def create_bull_researcher(llm, memory):
         fundamentals_report = state["fundamentals_report"]
 
         curr_situation = f"{market_research_report}\n\n{sentiment_report}\n\n{news_report}\n\n{fundamentals_report}"
-        past_memories = memory.get_memories(curr_situation, n_matches=2)
+        
+        # 检查是否启用记忆功能
+        use_memory = config.get("use_memory", False) if config else False
+        past_memories = memory.get_memories(curr_situation, n_matches=2) if use_memory else []
 
         past_memory_str = ""
         for i, rec in enumerate(past_memories, 1):
