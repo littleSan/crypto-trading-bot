@@ -2,8 +2,11 @@ package dataflows
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"math"
+	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -62,6 +65,24 @@ func NewMarketData(cfg *config.Config) *MarketData {
 	}
 
 	client := futures.NewClient(apiKey, apiSecret)
+
+	// Set proxy if configured
+	if cfg.BinanceProxy != "" {
+		proxyURL, err := url.Parse(cfg.BinanceProxy)
+		if err == nil {
+			// Create custom HTTP client with proxy
+			httpClient := &http.Client{
+				Transport: &http.Transport{
+					Proxy: http.ProxyURL(proxyURL),
+					TLSClientConfig: &tls.Config{
+						InsecureSkipVerify: false,
+					},
+				},
+				Timeout: 30 * time.Second,
+			}
+			client.HTTPClient = httpClient
+		}
+	}
 
 	return &MarketData{
 		client: client,

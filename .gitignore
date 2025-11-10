@@ -14,6 +14,7 @@ uv.lock
 .claude/
 CLAUDE.md
 .idea/
+doc/
 
 # Go specific
 *.exe
@@ -39,3 +40,5 @@ coverage.out
 coverage.html
 test_*.db
 *.test
+test/
+

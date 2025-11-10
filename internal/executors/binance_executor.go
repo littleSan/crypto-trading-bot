@@ -2,8 +2,11 @@ package executors
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"math"
+	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -71,15 +74,33 @@ type BinanceExecutor struct {
 }
 
 // NewBinanceExecutor creates a new BinanceExecutor
+// NewBinanceExecutor 创建一个新的 BinanceExecutor
 func NewBinanceExecutor(cfg *config.Config, log *logger.ColorLogger) *BinanceExecutor {
 	futures.UseTestnet = cfg.BinanceTestMode
 
 	client := futures.NewClient(cfg.BinanceAPIKey, cfg.BinanceAPISecret)
 
 	// Set proxy if configured
+	// 如果配置了代理，则设置代理
 	if cfg.BinanceProxy != "" {
-		// Note: go-binance doesn't directly support proxy, need to configure HTTP client
-		// This can be done via http.DefaultTransport if needed
+		proxyURL, err := url.Parse(cfg.BinanceProxy)
+		if err != nil {
+			log.Warning(fmt.Sprintf("代理 URL 解析失败: %v，将不使用代理", err))
+		} else {
+			// Create custom HTTP client with proxy
+			// 创建带代理的自定义 HTTP 客户端
+			httpClient := &http.Client{
+				Transport: &http.Transport{
+					Proxy: http.ProxyURL(proxyURL),
+					TLSClientConfig: &tls.Config{
+						InsecureSkipVerify: cfg.BinanceProxyInsecureSkipTLS, // 是否跳过 TLS 验证 / Skip TLS verification
+					},
+				},
+				Timeout: 30 * time.Second,
+			}
+			client.HTTPClient = httpClient
+			log.Success(fmt.Sprintf("已配置代理: %s (跳过TLS验证: %v)", cfg.BinanceProxy, cfg.BinanceProxyInsecureSkipTLS))
+		}
 	}
 
 	executor := &BinanceExecutor{
@@ -91,6 +112,7 @@ func NewBinanceExecutor(cfg *config.Config, log *logger.ColorLogger) *BinanceExe
 	}
 
 	// Print mode
+	// 打印模式
 	if executor.testMode {
 		log.Success("交易执行器：测试模式（模拟交易）")
 	} else {
@@ -114,8 +136,8 @@ func (e *BinanceExecutor) DetectPositionMode(ctx context.Context) error {
 		if configMode == "hedge" {
 			modeName = "双向持仓模式（Hedge）"
 		}
-		e.logger.Success(fmt.Sprintf("使用配置的持仓模式：%s", modeName))
-		return nil
+		e.logger.Success(fmt.Sprintf("使用配置文件(本地)的持仓模式：%s", modeName))
+		//return nil
 	}
 
 	// Auto-detect mode

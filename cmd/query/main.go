@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/oak/crypto-trading-bot/internal/config"
+	"github.com/oak/crypto-trading-bot/internal/constant"
 	"github.com/oak/crypto-trading-bot/internal/storage"
 )
 
@@ -16,7 +17,7 @@ func main() {
 	}
 
 	// Load configuration
-	cfg, err := config.LoadConfig()
+	cfg, err := config.LoadConfig(constant.BlankStr)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)
 		os.Exit(1)

@@ -2,10 +2,10 @@ package config
 
 import (
 	"fmt"
+	"github.com/oak/crypto-trading-bot/internal/constant"
+	"github.com/spf13/viper"
 	"os"
 	"strings"
-
-	"github.com/spf13/viper"
 )
 
 // Config holds all configuration for the crypto trading bot
@@ -17,11 +17,11 @@ type Config struct {
 	DatabasePath string
 
 	// LLM Configuration
-	LLMProvider    string
-	DeepThinkLLM   string
-	QuickThinkLLM  string
-	BackendURL     string
-	APIKey         string
+	LLMProvider   string
+	DeepThinkLLM  string
+	QuickThinkLLM string
+	BackendURL    string
+	APIKey        string
 
 	// Agent behavior
 	MaxDebateRounds      int
@@ -35,28 +35,30 @@ type Config struct {
 	DataVendorCrypto     string
 
 	// Binance trading configuration
-	BinanceAPIKey      string
-	BinanceAPISecret   string
-	BinanceProxy       string
-	BinanceLeverage    int
-	BinanceTestMode    bool
-	BinancePositionMode string
+	// 币安交易配置
+	BinanceAPIKey               string
+	BinanceAPISecret            string
+	BinanceProxy                string
+	BinanceProxyInsecureSkipTLS bool // 是否跳过代理 TLS 验证（某些代理需要）/ Skip TLS verification for proxy (required by some proxies)
+	BinanceLeverage             int
+	BinanceTestMode             bool
+	BinancePositionMode         string
 
 	// Trading parameters
-	CryptoSymbol      string
-	CryptoTimeframe   string
+	CryptoSymbol       string
+	CryptoTimeframe    string
 	CryptoLookbackDays int
-	PositionSize      float64
-	MaxPositionSize   float64
+	PositionSize       float64
+	MaxPositionSize    float64
 
 	// Risk management
-	MaxDrawdown         float64
-	RiskPerTrade        float64
+	MaxDrawdown          float64
+	RiskPerTrade         float64
 	VolatilityMultiplier float64
 
 	// Memory system
-	UseMemory   bool
-	MemoryTopK  int
+	UseMemory  bool
+	MemoryTopK int
 
 	// Debug options
 	DebugMode        bool
@@ -68,7 +70,21 @@ type Config struct {
 }
 
 // LoadConfig loads configuration from .env file
-func LoadConfig() (*Config, error) {
+func LoadConfig(pathToEnv string) (*Config, error) {
+
+	// load from specified env file if provided
+	if pathToEnv != constant.BlankStr {
+		viper.SetConfigFile(pathToEnv)
+		viper.SetConfigType("env")
+		viper.AutomaticEnv()
+		err := viper.ReadInConfig()
+		if err != nil {
+			return nil, fmt.Errorf("failed to read config file from %s: %w", pathToEnv, err)
+		}
+		binanceAPIKey := viper.GetString("BINANCE_API_KEY")
+		fmt.Printf("BINANCE_API_KEY:\n%s\n", binanceAPIKey)
+	}
+
 	viper.SetConfigFile(".env")
 	viper.SetConfigType("env")
 	viper.AutomaticEnv()
@@ -109,12 +125,13 @@ func LoadConfig() (*Config, error) {
 		DataVendorCrypto:     viper.GetString("DATA_VENDOR_CRYPTO"),
 
 		// Binance trading configuration
-		BinanceAPIKey:       viper.GetString("BINANCE_API_KEY"),
-		BinanceAPISecret:    viper.GetString("BINANCE_API_SECRET"),
-		BinanceProxy:        viper.GetString("BINANCE_PROXY"),
-		BinanceLeverage:     viper.GetInt("BINANCE_LEVERAGE"),
-		BinanceTestMode:     viper.GetBool("BINANCE_TEST_MODE"),
-		BinancePositionMode: viper.GetString("BINANCE_POSITION_MODE"),
+		BinanceAPIKey:               viper.GetString("BINANCE_API_KEY"),
+		BinanceAPISecret:            viper.GetString("BINANCE_API_SECRET"),
+		BinanceProxy:                viper.GetString("BINANCE_PROXY"),
+		BinanceProxyInsecureSkipTLS: viper.GetBool("BINANCE_PROXY_INSECURE_SKIP_TLS"),
+		BinanceLeverage:             viper.GetInt("BINANCE_LEVERAGE"),
+		BinanceTestMode:             viper.GetBool("BINANCE_TEST_MODE"),
+		BinancePositionMode:         viper.GetString("BINANCE_POSITION_MODE"),
 
 		// Trading parameters
 		CryptoSymbol:       viper.GetString("CRYPTO_SYMBOL"),
