@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/oak/crypto-trading-bot/internal/config"
-	"github.com/oak/crypto-trading-bot/internal/constant"
 	"github.com/oak/crypto-trading-bot/internal/logger"
 	"os"
 	"testing"
@@ -13,7 +12,7 @@ import (
 // TestBinanceExecutor_SetupExchange 测试交易所设置（需要有效的 API key）
 // TestBinanceExecutor_SetupExchange tests exchange setup (requires valid API key)
 func TestBinanceExecutor_SetupExchange(t *testing.T) {
-	cfg, err := config.LoadConfig(constant.BlankStr)
+	cfg, err := config.LoadConfig("../../test/.env")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)
 		os.Exit(1)

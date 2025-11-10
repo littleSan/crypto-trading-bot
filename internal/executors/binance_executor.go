@@ -612,6 +612,12 @@ func (e *BinanceExecutor) withRetry(fn func() error) error {
 	return nil
 }
 
+// GetAccountInfo gets account information from Binance
+// GetAccountInfo 从币安获取账户信息
+func (e *BinanceExecutor) GetAccountInfo(ctx context.Context) (*futures.Account, error) {
+	return e.client.NewGetAccountService().Do(ctx)
+}
+
 // Helper functions
 func parseFloat(s string) (float64, error) {
 	var f float64

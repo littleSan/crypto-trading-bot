@@ -45,7 +45,9 @@ type Config struct {
 	BinancePositionMode         string
 
 	// Trading parameters
-	CryptoSymbol       string
+	// 交易参数
+	CryptoSymbol       string   // 主交易对（向后兼容）/ Primary trading pair (backward compatible)
+	CryptoSymbols      []string // 多个交易对列表 / Multiple trading pairs list
 	CryptoTimeframe    string
 	CryptoLookbackDays int
 	PositionSize       float64
@@ -69,30 +71,24 @@ type Config struct {
 	WebPort int
 }
 
-// LoadConfig loads configuration from .env file
+// LoadConfig loads configuration from .env file or a custom path
+// LoadConfig 从 .env 文件或自定义路径加载配置
 func LoadConfig(pathToEnv string) (*Config, error) {
-
-	// load from specified env file if provided
-	if pathToEnv != constant.BlankStr {
-		viper.SetConfigFile(pathToEnv)
-		viper.SetConfigType("env")
-		viper.AutomaticEnv()
-		err := viper.ReadInConfig()
-		if err != nil {
-			return nil, fmt.Errorf("failed to read config file from %s: %w", pathToEnv, err)
-		}
-		binanceAPIKey := viper.GetString("BINANCE_API_KEY")
-		fmt.Printf("BINANCE_API_KEY:\n%s\n", binanceAPIKey)
-	}
-
-	viper.SetConfigFile(".env")
 	viper.SetConfigType("env")
 	viper.AutomaticEnv()
+
+	// Determine which config file to load
+	configPath := ".env" // default path / 默认路径
+	if pathToEnv != constant.BlankStr {
+		configPath = pathToEnv
+	}
+
+	viper.SetConfigFile(configPath)
 
 	// Attempt to read config file, but don't fail if it doesn't exist
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-			return nil, fmt.Errorf("failed to read config file: %w", err)
+			return nil, fmt.Errorf("failed to read config file from %s: %w", configPath, err)
 		}
 	}
 
@@ -159,8 +155,31 @@ func LoadConfig(pathToEnv string) (*Config, error) {
 	}
 
 	// Auto-calculate lookback days if not set
+	// 如果未设置回看天数，自动计算
 	if cfg.CryptoLookbackDays == 0 {
 		cfg.CryptoLookbackDays = calculateLookbackDays(cfg.CryptoTimeframe)
+	}
+
+	// Parse multiple crypto symbols
+	// 解析多个加密货币交易对
+	symbolsStr := viper.GetString("CRYPTO_SYMBOLS")
+	if symbolsStr != "" {
+		// Use CRYPTO_SYMBOLS if provided
+		// 如果提供了 CRYPTO_SYMBOLS，使用它
+		cfg.CryptoSymbols = strings.Split(symbolsStr, ",")
+		// Trim spaces
+		// 去除空格
+		for i := range cfg.CryptoSymbols {
+			cfg.CryptoSymbols[i] = strings.TrimSpace(cfg.CryptoSymbols[i])
+		}
+	} else if cfg.CryptoSymbol != "" {
+		// Fall back to single symbol for backward compatibility
+		// 向后兼容：回退到单个交易对
+		cfg.CryptoSymbols = []string{cfg.CryptoSymbol}
+	} else {
+		// Default to BTC/USDT
+		// 默认使用 BTC/USDT
+		cfg.CryptoSymbols = []string{"BTC/USDT"}
 	}
 
 	return cfg, nil
@@ -233,8 +252,25 @@ func calculateLookbackDays(timeframe string) int {
 }
 
 // GetBinanceSymbol converts symbol format from "BTC/USDT" to "BTCUSDT"
+// GetBinanceSymbol 将交易对格式从 "BTC/USDT" 转换为 "BTCUSDT"
 func (c *Config) GetBinanceSymbol() string {
 	return strings.ReplaceAll(c.CryptoSymbol, "/", "")
+}
+
+// GetBinanceSymbolFor converts a specific symbol format from "BTC/USDT" to "BTCUSDT"
+// GetBinanceSymbolFor 将特定交易对格式从 "BTC/USDT" 转换为 "BTCUSDT"
+func (c *Config) GetBinanceSymbolFor(symbol string) string {
+	return strings.ReplaceAll(symbol, "/", "")
+}
+
+// GetAllBinanceSymbols returns all trading pairs in Binance format
+// GetAllBinanceSymbols 返回所有交易对的币安格式
+func (c *Config) GetAllBinanceSymbols() []string {
+	symbols := make([]string, len(c.CryptoSymbols))
+	for i, symbol := range c.CryptoSymbols {
+		symbols[i] = strings.ReplaceAll(symbol, "/", "")
+	}
+	return symbols
 }
 
 // Validate validates the configuration

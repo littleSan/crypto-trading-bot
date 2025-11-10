@@ -223,11 +223,11 @@ func (s *Storage) GetSessionStats(symbol string) (map[string]interface{}, error)
 	}
 
 	stats := map[string]interface{}{
-		"total_sessions":  totalSessions,
-		"executed_count":  executedCount,
-		"first_session":   firstSession,
-		"last_session":    lastSession,
-		"execution_rate":  0.0,
+		"total_sessions": totalSessions,
+		"executed_count": executedCount,
+		"first_session":  firstSession,
+		"last_session":   lastSession,
+		"execution_rate": 0.0,
 	}
 
 	if totalSessions > 0 {
@@ -248,6 +248,29 @@ func (s *Storage) UpdateExecutionResult(sessionID int64, executed bool, result s
 	_, err := s.db.Exec(query, executed, result, sessionID)
 	if err != nil {
 		return fmt.Errorf("failed to update execution result: %w", err)
+	}
+
+	return nil
+}
+
+// UpdateLatestSessionExecution updates the execution result for the latest session of a symbol
+// UpdateLatestSessionExecution 更新某个交易对最新会话的执行结果
+func (s *Storage) UpdateLatestSessionExecution(symbol string, timeframe string, executed bool, result string) error {
+	query := `
+	UPDATE trading_sessions
+	SET executed = ?, execution_result = ?
+	WHERE symbol = ? AND timeframe = ?
+	AND id = (
+		SELECT id FROM trading_sessions
+		WHERE symbol = ? AND timeframe = ?
+		ORDER BY created_at DESC
+		LIMIT 1
+	)
+	`
+
+	_, err := s.db.Exec(query, executed, result, symbol, timeframe, symbol, timeframe)
+	if err != nil {
+		return fmt.Errorf("failed to update latest session execution: %w", err)
 	}
 
 	return nil
