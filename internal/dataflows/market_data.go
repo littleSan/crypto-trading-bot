@@ -40,6 +40,13 @@ type TechnicalIndicators struct {
 	EMA_26    []float64
 	ATR       []float64
 	Volume    []float64
+
+	// New indicators for trend strength and confirmation
+	// 新增指标：趋势强度和确认
+	ADX         []float64 // Average Directional Index - 趋势强度
+	DI_Plus     []float64 // +DI - 上升趋向指标
+	DI_Minus    []float64 // -DI - 下降趋向指标
+	VolumeRatio []float64 // Volume Ratio - 成交量比率
 }
 
 // MarketData handles crypto market data fetching
@@ -160,6 +167,11 @@ func CalculateIndicators(ohlcvData []OHLCV) *TechnicalIndicators {
 	ema26 := calculateEMA(closes, 26)
 	atr := calculateATR(highs, lows, closes, 14)
 
+	// New indicators for trend strength and volume confirmation
+	// 新增指标：趋势强度和成交量确认
+	adx, diPlus, diMinus := calculateADX(highs, lows, closes, 14)
+	volumeRatio := calculateVolumeRatio(volumes, 20)
+
 	return &TechnicalIndicators{
 		RSI:       rsi,
 		MACD:      macd,
@@ -174,6 +186,13 @@ func CalculateIndicators(ohlcvData []OHLCV) *TechnicalIndicators {
 		EMA_26:    ema26,
 		ATR:       atr,
 		Volume:    volumes,
+
+		// New indicators
+		// 新增指标
+		ADX:         adx,
+		DI_Plus:     diPlus,
+		DI_Minus:    diMinus,
+		VolumeRatio: volumeRatio,
 	}
 }
 
@@ -360,6 +379,161 @@ func calculateATR(highs, lows, closes []float64, period int) []float64 {
 	return result
 }
 
+// calculateADX calculates the Average Directional Index
+// calculateADX 计算平均趋势指数（趋势强度）
+// ADX < 20: 无趋势，观望 / No trend, wait
+// ADX 20-25: 弱趋势 / Weak trend
+// ADX > 25: 强趋势，可交易 / Strong trend, tradable
+// ADX > 50: 极强趋势，最佳机会 / Very strong trend, best opportunity
+func calculateADX(highs, lows, closes []float64, period int) (adx, diPlus, diMinus []float64) {
+	n := len(closes)
+	adx = make([]float64, n)
+	diPlus = make([]float64, n)
+	diMinus = make([]float64, n)
+
+	// Calculate True Range and Directional Movement
+	// 计算真实波动幅度和趋向变动
+	tr := make([]float64, n)
+	plusDM := make([]float64, n)
+	minusDM := make([]float64, n)
+
+	for i := range closes {
+		if i == 0 {
+			tr[i] = highs[i] - lows[i]
+			plusDM[i] = 0
+			minusDM[i] = 0
+			adx[i] = math.NaN()
+			diPlus[i] = math.NaN()
+			diMinus[i] = math.NaN()
+			continue
+		}
+
+		// True Range
+		h_l := highs[i] - lows[i]
+		h_pc := math.Abs(highs[i] - closes[i-1])
+		l_pc := math.Abs(lows[i] - closes[i-1])
+		tr[i] = math.Max(h_l, math.Max(h_pc, l_pc))
+
+		// Directional Movement
+		upMove := highs[i] - highs[i-1]
+		downMove := lows[i-1] - lows[i]
+
+		if upMove > downMove && upMove > 0 {
+			plusDM[i] = upMove
+		} else {
+			plusDM[i] = 0
+		}
+
+		if downMove > upMove && downMove > 0 {
+			minusDM[i] = downMove
+		} else {
+			minusDM[i] = 0
+		}
+
+		if i < period {
+			adx[i] = math.NaN()
+			diPlus[i] = math.NaN()
+			diMinus[i] = math.NaN()
+		}
+	}
+
+	// Smooth True Range and Directional Movements
+	// 平滑真实波动幅度和趋向变动
+	smoothedTR := make([]float64, n)
+	smoothedPlusDM := make([]float64, n)
+	smoothedMinusDM := make([]float64, n)
+
+	// Initial smoothing - sum of first period values
+	// 初始平滑 - 第一个周期的总和
+	for i := 1; i <= period && i < n; i++ {
+		smoothedTR[period] += tr[i]
+		smoothedPlusDM[period] += plusDM[i]
+		smoothedMinusDM[period] += minusDM[i]
+	}
+
+	// Subsequent values use exponential smoothing
+	// 后续值使用指数平滑
+	for i := period + 1; i < n; i++ {
+		smoothedTR[i] = smoothedTR[i-1] - (smoothedTR[i-1] / float64(period)) + tr[i]
+		smoothedPlusDM[i] = smoothedPlusDM[i-1] - (smoothedPlusDM[i-1] / float64(period)) + plusDM[i]
+		smoothedMinusDM[i] = smoothedMinusDM[i-1] - (smoothedMinusDM[i-1] / float64(period)) + minusDM[i]
+	}
+
+	// Calculate +DI and -DI
+	// 计算 +DI 和 -DI
+	dx := make([]float64, n)
+	for i := period; i < n; i++ {
+		if smoothedTR[i] != 0 {
+			diPlus[i] = 100 * smoothedPlusDM[i] / smoothedTR[i]
+			diMinus[i] = 100 * smoothedMinusDM[i] / smoothedTR[i]
+
+			// Calculate DX
+			diSum := diPlus[i] + diMinus[i]
+			if diSum != 0 {
+				dx[i] = 100 * math.Abs(diPlus[i]-diMinus[i]) / diSum
+			} else {
+				dx[i] = 0
+			}
+		} else {
+			diPlus[i] = 0
+			diMinus[i] = 0
+			dx[i] = 0
+		}
+	}
+
+	// Calculate ADX (smoothed DX)
+	// 计算 ADX（平滑的 DX）
+	adxPeriod := period * 2 // ADX period is typically 2x the DI period
+	for i := period + adxPeriod - 1; i < n; i++ {
+		if i == period+adxPeriod-1 {
+			// Initial ADX is average of first period DX values
+			sum := 0.0
+			for j := period; j < period+adxPeriod; j++ {
+				sum += dx[j]
+			}
+			adx[i] = sum / float64(adxPeriod)
+		} else {
+			// Smooth ADX
+			adx[i] = (adx[i-1]*float64(adxPeriod-1) + dx[i]) / float64(adxPeriod)
+		}
+	}
+
+	return adx, diPlus, diMinus
+}
+
+// calculateVolumeRatio calculates volume ratio compared to average
+// calculateVolumeRatio 计算成交量比率（相对于平均值）
+// Ratio > 1.5: 放量 / High volume
+// Ratio > 2.0: 异常放量 / Exceptionally high volume
+func calculateVolumeRatio(volumes []float64, period int) []float64 {
+	result := make([]float64, len(volumes))
+
+	for i := range volumes {
+		if i < period-1 {
+			result[i] = math.NaN()
+			continue
+		}
+
+		// Calculate average volume for the period
+		// 计算周期内的平均成交量
+		sum := 0.0
+		for j := 0; j < period; j++ {
+			sum += volumes[i-j]
+		}
+		avgVolume := sum / float64(period)
+
+		// Calculate ratio
+		// 计算比率
+		if avgVolume > 0 {
+			result[i] = volumes[i] / avgVolume
+		} else {
+			result[i] = 1.0
+		}
+	}
+
+	return result
+}
+
 // FormatOHLCVReport generates a formatted report of OHLCV data
 func FormatOHLCVReport(symbol string, timeframe string, ohlcvData []OHLCV) string {
 	var sb strings.Builder
@@ -459,10 +633,71 @@ func FormatIndicatorReport(symbol string, timeframe string, ohlcvData []OHLCV, i
 	// ATR
 	if len(indicators.ATR) > lastIdx && !math.IsNaN(indicators.ATR[lastIdx]) {
 		sb.WriteString(fmt.Sprintf("\nATR(14): $%.2f\n", indicators.ATR[lastIdx]))
+		atrPercent := (indicators.ATR[lastIdx] / latestPrice) * 100
+		sb.WriteString(fmt.Sprintf("ATR %%: %.2f%%\n", atrPercent))
 	}
 
-	// Volume
-	sb.WriteString(fmt.Sprintf("\nLatest Volume: %.2f\n", ohlcvData[lastIdx].Volume))
+	// ADX and Directional Indicators
+	// ADX 和趋向指标
+	if len(indicators.ADX) > lastIdx && !math.IsNaN(indicators.ADX[lastIdx]) {
+		sb.WriteString(fmt.Sprintf("\nTrend Strength (ADX):\n"))
+		sb.WriteString(fmt.Sprintf("  ADX(14): %.2f", indicators.ADX[lastIdx]))
+
+		// Interpret ADX value
+		// 解释 ADX 值
+		adxValue := indicators.ADX[lastIdx]
+		if adxValue < 20 {
+			sb.WriteString(" (No trend - 观望)")
+		} else if adxValue < 25 {
+			sb.WriteString(" (Weak trend - 弱趋势)")
+		} else if adxValue < 50 {
+			sb.WriteString(" (Strong trend - 强趋势 ✓)")
+		} else {
+			sb.WriteString(" (Very strong trend - 极强趋势 ✓✓)")
+		}
+		sb.WriteString("\n")
+
+		if len(indicators.DI_Plus) > lastIdx && !math.IsNaN(indicators.DI_Plus[lastIdx]) {
+			sb.WriteString(fmt.Sprintf("  +DI: %.2f\n", indicators.DI_Plus[lastIdx]))
+		}
+		if len(indicators.DI_Minus) > lastIdx && !math.IsNaN(indicators.DI_Minus[lastIdx]) {
+			sb.WriteString(fmt.Sprintf("  -DI: %.2f\n", indicators.DI_Minus[lastIdx]))
+		}
+
+		// Determine trend direction
+		// 判断趋势方向
+		if len(indicators.DI_Plus) > lastIdx && len(indicators.DI_Minus) > lastIdx &&
+			!math.IsNaN(indicators.DI_Plus[lastIdx]) && !math.IsNaN(indicators.DI_Minus[lastIdx]) {
+			if indicators.DI_Plus[lastIdx] > indicators.DI_Minus[lastIdx] {
+				sb.WriteString("  Direction: Bullish (上升趋势)\n")
+			} else {
+				sb.WriteString("  Direction: Bearish (下降趋势)\n")
+			}
+		}
+	}
+
+	// Volume Analysis
+	// 成交量分析
+	sb.WriteString(fmt.Sprintf("\nVolume Analysis:\n"))
+	sb.WriteString(fmt.Sprintf("  Latest Volume: %.2f\n", ohlcvData[lastIdx].Volume))
+
+	if len(indicators.VolumeRatio) > lastIdx && !math.IsNaN(indicators.VolumeRatio[lastIdx]) {
+		sb.WriteString(fmt.Sprintf("  Volume Ratio: %.2fx", indicators.VolumeRatio[lastIdx]))
+
+		// Interpret volume ratio
+		// 解释成交量比率
+		volumeRatio := indicators.VolumeRatio[lastIdx]
+		if volumeRatio > 2.0 {
+			sb.WriteString(" (异常放量 - Exceptionally high ✓✓)")
+		} else if volumeRatio > 1.5 {
+			sb.WriteString(" (放量 - High volume ✓)")
+		} else if volumeRatio < 0.5 {
+			sb.WriteString(" (缩量 - Low volume)")
+		} else {
+			sb.WriteString(" (正常 - Normal)")
+		}
+		sb.WriteString("\n")
+	}
 
 	return sb.String()
 }

@@ -3,6 +3,7 @@ package agents
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 
@@ -133,6 +134,81 @@ func (s *AgentState) GetAllReports() string {
 	}
 
 	return sb.String()
+}
+
+// loadPromptFromFile loads trading prompt from file, returns default prompt if file not found or error
+// loadPromptFromFile 从文件加载交易策略 Prompt，如果文件不存在或出错则返回默认 Prompt
+func loadPromptFromFile(promptPath string, log *logger.ColorLogger) string {
+	// Default prompt - fallback if file not found
+	// 默认 Prompt - 文件未找到时的后备方案
+	defaultPrompt := `你是一位经验丰富的加密货币趋势交易员，遵循以下核心交易哲学：
+
+**交易哲学**：
+1. **极度选择性** - 只交易最确定的机会，宁可错过不可做错
+2. **高盈亏比** - 目标盈亏比 ≥ 2:1，追求大赢
+3. **快速止损** - 错了就认，绝不扛单
+4. **让盈利奔跑** - 不设固定止盈，用追踪止损捕捉大行情
+5. **耐心等待** - 等待高概率机会，做对的事比做很多事重要
+6. **一次大赢胜过十次小赢** - 专注捕捉趋势性大行情
+
+**决策原则**：
+• 只在**强趋势**中交易（ADX > 25，趋势越强越好）
+• 等待**趋势确认**（MACD、DI+/DI-、价格结构一致）
+• 避免**追涨杀跌**（RSI 极端时谨慎，等待回调或突破）
+• 要求**成交量配合**（放量突破更可靠）
+• 从所有交易对中选择 **1-2 个最佳机会**，避免过度分散
+• 大部分时候应该 **HOLD**，耐心等待完美设置
+
+**决策输出格式**（必须严格遵守）：
+
+【交易对名称】
+**交易方向**: BUY / SELL / CLOSE_LONG / CLOSE_SHORT / HOLD
+**置信度**: 0-1 的数值（只有 ≥ 0.75 才考虑交易）
+**入场理由**: 为什么这是高确定性机会？（1-2 句话，说明趋势+确认信号）
+**初始止损**: $具体价格（基于支撑/阻力或 2×ATR，必须输出数字）
+**预期盈亏比**: ≥ 2:1（说明止损空间 vs 目标空间，但不设固定止盈）
+**仓位建议**: 如 "30% 资金" 或 "维持观望"
+
+**止损设置要求**（Critical）：
+• 必须输出具体止损价格，如 "初始止损: $95000"
+• 优先使用技术位（支撑/阻力）
+• 次选 ATR：入场价 ± 2×ATR
+• 底线：2-3% 固定止损
+• 确保盈亏比：假设捕捉 5-10% 趋势，止损 2-3%，盈亏比 > 2:1
+
+**重要提醒**：
+⚠️ 只在极度确定（置信度 ≥ 0.75）时才交易，大部分时候应该 HOLD
+⚠️ 不要设置固定止盈 - 我们用追踪止损让盈利奔跑
+⚠️ 一次 10% 大赢比十次 1% 小赢更重要
+⚠️ 宁可错过 100 次机会，也不做 1 次不确定的交易
+
+---
+
+最后包含总结：说明为什么选择这些交易对，整体盈亏比如何，风险如何控制。
+
+请用中文回答，语言简洁专业。`
+
+	// Try to read from file
+	// 尝试从文件读取
+	if promptPath == "" {
+		log.Warning("Prompt 文件路径为空，使用默认 Prompt")
+		return defaultPrompt
+	}
+
+	content, err := os.ReadFile(promptPath)
+	if err != nil {
+		log.Warning(fmt.Sprintf("无法读取 Prompt 文件 %s: %v，使用默认 Prompt", promptPath, err))
+		return defaultPrompt
+	}
+
+	promptContent := strings.TrimSpace(string(content))
+	if promptContent == "" {
+		log.Warning(fmt.Sprintf("Prompt 文件 %s 为空，使用默认 Prompt", promptPath))
+		return defaultPrompt
+	}
+
+	log.Success(fmt.Sprintf("成功加载交易策略 Prompt: %s", promptPath))
+	return promptContent
 }
 
 // SimpleTradingGraph creates a simplified trading workflow using Eino Graph
@@ -506,35 +582,30 @@ func (g *SimpleTradingGraph) makeLLMDecision(ctx context.Context) (string, error
 	// Prepare the prompt with all reports
 	allReports := g.state.GetAllReports()
 
-	systemPrompt := `你是一位经验丰富的加密货币交易员，负责将多个交易对的分析报告整合成具体的交易决策。
+	// Load system prompt from file or use default
+	// 从文件加载系统 Prompt 或使用默认值
+	systemPrompt := loadPromptFromFile(g.config.TraderPromptPath, g.logger)
 
-**多币种决策策略**：
-1. **综合评估**：查看所有交易对的市场、链上、情绪数据，找出最优机会
-2. **选择性交易**：从所有交易对中选择 1-2 个最有说服力的交易机会，避免过度分散
-3. **风险管理**：考虑仓位分配，单个交易对风险不超过总资金的 30%
-4. **高盈亏比**：只选择盈亏比 > 2:1 的交易，耐心等待大机会
-5. **仓位控制**：如果已有持仓，考虑是否需要调整或平仓
-
-**决策输出格式**（重要）：
-为每个交易对给出明确决策，格式如下：
-
-【交易对名称】
-**交易方向**: BUY / SELL / CLOSE_LONG / CLOSE_SHORT / HOLD
-**置信度**: 0-1 的数值，如 0.8
-**理由**: 简明扼要的理由（1-2 句话）
-**仓位建议**: 如 "30% 资金" 或 "维持观望"
-
----
-
-最后必须包含一个总结，说明为什么选择这些交易对，以及整体的风险控制策略。
-
-请用中文回答，语言简洁专业。`
+	// Build user prompt with leverage range info
+	// 构建包含杠杆范围信息的用户 Prompt
+	leverageInfo := ""
+	if g.config.BinanceLeverageDynamic {
+		leverageInfo = fmt.Sprintf(`
+**杠杆范围**: %d-%d 倍
+说明：请根据置信度、趋势强度（ADX）、波动性（ATR）在此范围内选择合适的杠杆倍数。
+在最确定的机会上使用较高杠杆，在不太确定的机会上使用较低杠杆。
+`, g.config.BinanceLeverageMin, g.config.BinanceLeverageMax)
+	} else {
+		leverageInfo = fmt.Sprintf(`
+**固定杠杆**: %d 倍（本次交易将使用固定杠杆）
+`, g.config.BinanceLeverage)
+	}
 
 	userPrompt := fmt.Sprintf(`请分析以下数据并给出交易决策：
-
+%s
 %s
 
-请给出你的分析和最终决策。`, allReports)
+请给出你的分析和最终决策。`, leverageInfo, allReports)
 
 	// Create messages
 	messages := []*schema.Message{

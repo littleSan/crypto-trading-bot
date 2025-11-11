@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -187,6 +188,14 @@ func main() {
 		// 初始化交易协调器
 		coordinator := executors.NewTradeCoordinator(cfg, executor, log)
 
+		// Initialize stop-loss manager
+		// 初始化止损管理器
+		stopLossManager := executors.NewStopLossManager(cfg, executor, log)
+
+		// Start real-time position monitoring in background
+		// 在后台启动实时持仓监控
+		go stopLossManager.MonitorPositions(10 * time.Second) // 每 10 秒检查一次
+
 		// Execute trades for each symbol
 		// 为每个交易对执行交易
 		executionResults := make(map[string]string)
@@ -249,6 +258,92 @@ func main() {
 
 			if result.Success {
 				executionResults[symbol] = fmt.Sprintf("✅ 成功执行 %s", result.Action)
+
+				// Register position for stop-loss management (only for opening positions)
+				// 注册持仓到止损管理器（仅开仓时）
+				if symbolDecision.Action == executors.ActionBuy || symbolDecision.Action == executors.ActionSell {
+					// Validate and get leverage to use
+					// 验证并获取要使用的杠杆
+					leverageToUse := agents.ValidateLeverage(
+						symbolDecision.Leverage,
+						cfg.BinanceLeverageMin,
+						cfg.BinanceLeverageMax,
+						cfg.BinanceLeverageDynamic,
+					)
+
+					if cfg.BinanceLeverageDynamic {
+						log.Info(fmt.Sprintf("💡 LLM 选择杠杆: %dx (范围: %d-%d)", leverageToUse, cfg.BinanceLeverageMin, cfg.BinanceLeverageMax))
+					} else {
+						log.Info(fmt.Sprintf("💡 使用固定杠杆: %dx", leverageToUse))
+					}
+
+					// Calculate initial stop-loss if not provided by LLM
+					// 如果 LLM 未提供止损价格，则计算初始止损
+					initialStopLoss := symbolDecision.StopLoss
+					if initialStopLoss == 0 {
+						// Use 2.5% default stop-loss
+						// 使用 2.5% 默认止损
+						if symbolDecision.Action == executors.ActionBuy {
+							initialStopLoss = result.Price * 0.975 // -2.5%
+						} else {
+							initialStopLoss = result.Price * 1.025 // +2.5%
+						}
+						log.Info(fmt.Sprintf("LLM 未提供止损价格，使用默认 2.5%% 止损: %.2f", initialStopLoss))
+					}
+
+					// Get ATR value from indicators for dynamic trailing stop
+					// 从指标中获取 ATR 值用于动态追踪止损
+					var atrValue float64
+					reports := state.GetSymbolReports(symbol)
+					if reports != nil && reports.TechnicalIndicators != nil {
+						indicators := reports.TechnicalIndicators
+						if len(indicators.ATR) > 0 {
+							// Get latest ATR value
+							lastIdx := len(indicators.ATR) - 1
+							if lastIdx >= 0 && !math.IsNaN(indicators.ATR[lastIdx]) {
+								atrValue = indicators.ATR[lastIdx]
+								atrPercent := (atrValue / result.Price) * 100
+								log.Info(fmt.Sprintf("当前 ATR: %.2f (%.2f%% of price)", atrValue, atrPercent))
+							}
+						}
+					}
+
+					// Create position
+					// 创建持仓
+					// Determine position side from action
+					// 从动作确定持仓方向
+					positionSide := "long"
+					if symbolDecision.Action == executors.ActionSell {
+						positionSide = "short"
+					}
+
+					position := &executors.Position{
+						ID:              fmt.Sprintf("%s-%d", symbol, time.Now().Unix()),
+						Symbol:          symbol,
+						Side:            positionSide,
+						EntryPrice:      result.Price,
+						EntryTime:       time.Now(),
+						Quantity:        result.Amount,
+						Leverage:        leverageToUse,
+						InitialStopLoss: initialStopLoss,
+						CurrentStopLoss: initialStopLoss,
+						StopLossType:    "fixed",
+						OpenReason:      symbolDecision.Reason,
+						ATR:             atrValue, // Add ATR for dynamic trailing stop
+					}
+
+					// Register to stop-loss manager
+					// 注册到止损管理器
+					stopLossManager.RegisterPosition(position)
+
+					// Place initial stop-loss order
+					// 下初始止损单
+					if err := stopLossManager.PlaceInitialStopLoss(ctx, position); err != nil {
+						log.Warning(fmt.Sprintf("⚠️  下初始止损单失败: %v", err))
+					} else {
+						log.Success(fmt.Sprintf("✅ 初始止损单已下达: %.2f", initialStopLoss))
+					}
+				}
 			} else {
 				executionResults[symbol] = fmt.Sprintf("❌ 执行失败: %s", result.Message)
 			}
@@ -261,12 +356,6 @@ func main() {
 			log.Warning(fmt.Sprintf("⚠️  获取更新后的余额失败: %v", err))
 		} else {
 			log.Info(portfolioMgr.GetPortfolioSummary())
-		}
-
-		// Check risk limits
-		// 检查风险限制
-		if err := portfolioMgr.CheckDrawdown(); err != nil {
-			log.Warning(fmt.Sprintf("⚠️  风险警告: %v", err))
 		}
 
 		// Display execution summary

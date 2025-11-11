@@ -37,14 +37,59 @@ const (
 
 // Position represents a trading position
 type Position struct {
-	Side             string
-	Size             float64
-	EntryPrice       float64
-	UnrealizedPnL    float64
-	PositionAmt      float64
-	Symbol           string
-	Leverage         int
-	LiquidationPrice float64
+	// Basic position info
+	// 基础持仓信息
+	ID               string    // 持仓 ID / Position ID
+	Symbol           string    // 交易对 / Trading pair
+	Side             string    // long/short
+	Size             float64   // 持仓大小 / Position size (same as Quantity)
+	EntryPrice       float64   // 入场价格 / Entry price
+	EntryTime        time.Time // 入场时间 / Entry time
+	CurrentPrice     float64   // 当前价格 / Current price
+	HighestPrice     float64   // 最高价（多仓）或最低价（空仓）/ Highest/lowest price
+	Quantity         float64   // 持仓数量 / Quantity (same as Size)
+	UnrealizedPnL    float64   // 未实现盈亏 / Unrealized PnL
+	PositionAmt      float64   // 仓位金额 / Position amount
+	Leverage         int       // 杠杆倍数 / Leverage
+	LiquidationPrice float64   // 强平价格 / Liquidation price
+
+	// Stop-loss management
+	// 止损管理
+	InitialStopLoss   float64 // 初始止损价格 / Initial stop-loss
+	CurrentStopLoss   float64 // 当前止损价格 / Current stop-loss
+	StopLossType      string  // 止损类型：fixed, breakeven, trailing
+	TrailingDistance  float64 // 追踪距离（百分比）/ Trailing distance
+	PartialTPExecuted bool    // 是否已执行分批止盈 / Whether partial TP has been executed
+	ATR               float64 // ATR 值用于动态追踪距离 / ATR value for dynamic trailing distance
+
+	// Order management
+	// 订单管理
+	StopLossOrderID string // 当前止损单 ID / Stop-loss order ID
+
+	// History and context
+	// 历史和上下文
+	StopLossHistory []StopLossEvent // 止损变更历史 / Stop-loss history
+	PriceHistory    []PricePoint    // 价格历史 / Price history
+	OpenReason      string          // 开仓理由 / Opening reason
+	LastLLMReview   time.Time       // 上次 LLM 复查时间 / Last LLM review
+	LLMSuggestions  []string        // LLM 建议 / LLM suggestions
+}
+
+// StopLossEvent represents a stop-loss change event
+// StopLossEvent 表示止损变更事件
+type StopLossEvent struct {
+	Time    time.Time
+	OldStop float64
+	NewStop float64
+	Reason  string
+	Trigger string // program or llm
+}
+
+// PricePoint represents a price point in time
+// PricePoint 表示价格点
+type PricePoint struct {
+	Time  time.Time
+	Price float64
 }
 
 // TradeResult represents the result of a trade execution
@@ -629,4 +674,120 @@ func parseInt(s string) (int, error) {
 	var i int
 	_, err := fmt.Sscanf(s, "%d", &i)
 	return i, err
+}
+
+// Position helper methods
+// Position 辅助方法
+
+// GetUnrealizedPnL calculates unrealized profit/loss percentage
+// GetUnrealizedPnL 计算未实现盈亏百分比
+func (p *Position) GetUnrealizedPnL() float64 {
+	if p.Side == "long" {
+		return (p.CurrentPrice - p.EntryPrice) / p.EntryPrice
+	}
+	// For short positions
+	// 空仓
+	return (p.EntryPrice - p.CurrentPrice) / p.EntryPrice
+}
+
+// GetUnrealizedPnLUSDT calculates unrealized profit/loss in USDT
+// GetUnrealizedPnLUSDT 计算 USDT 计价的未实现盈亏
+func (p *Position) GetUnrealizedPnLUSDT() float64 {
+	return p.GetUnrealizedPnL() * p.EntryPrice * p.Quantity
+}
+
+// GetHoldingDuration returns how long the position has been held
+// GetHoldingDuration 返回持仓时间
+func (p *Position) GetHoldingDuration() time.Duration {
+	return time.Since(p.EntryTime)
+}
+
+// ShouldTriggerStopLoss checks if stop-loss should be triggered
+// ShouldTriggerStopLoss 检查是否应该触发止损
+func (p *Position) ShouldTriggerStopLoss() bool {
+	if p.Side == "long" {
+		return p.CurrentPrice <= p.CurrentStopLoss
+	}
+	// For short positions
+	// 空仓
+	return p.CurrentPrice >= p.CurrentStopLoss
+}
+
+// GetRiskRewardRatio calculates current risk/reward ratio
+// GetRiskRewardRatio 计算当前盈亏比
+func (p *Position) GetRiskRewardRatio() float64 {
+	risk := p.EntryPrice - p.InitialStopLoss
+	if risk <= 0 {
+		return 0
+	}
+
+	reward := p.CurrentPrice - p.EntryPrice
+	if p.Side == "short" {
+		reward = p.EntryPrice - p.CurrentPrice
+	}
+
+	return reward / risk
+}
+
+// UpdatePrice updates current price and highest/lowest price
+// UpdatePrice 更新当前价格和最高/最低价
+func (p *Position) UpdatePrice(newPrice float64) {
+	p.CurrentPrice = newPrice
+
+	// Update highest price for long positions
+	// 更新多仓的最高价
+	if p.Side == "long" {
+		if newPrice > p.HighestPrice {
+			p.HighestPrice = newPrice
+		}
+	} else {
+		// Update lowest price for short positions
+		// 更新空仓的最低价
+		if p.HighestPrice == 0 || newPrice < p.HighestPrice {
+			p.HighestPrice = newPrice
+		}
+	}
+
+	// Add to price history (limit to last 1000 points)
+	// 添加到价格历史（限制最近 1000 个点）
+	p.PriceHistory = append(p.PriceHistory, PricePoint{
+		Time:  time.Now(),
+		Price: newPrice,
+	})
+	if len(p.PriceHistory) > 1000 {
+		p.PriceHistory = p.PriceHistory[1:]
+	}
+}
+
+// AddStopLossEvent adds a stop-loss change event to history
+// AddStopLossEvent 添加止损变更事件到历史记录
+func (p *Position) AddStopLossEvent(oldStop, newStop float64, reason, trigger string) {
+	event := StopLossEvent{
+		Time:    time.Now(),
+		OldStop: oldStop,
+		NewStop: newStop,
+		Reason:  reason,
+		Trigger: trigger,
+	}
+	p.StopLossHistory = append(p.StopLossHistory, event)
+}
+
+// GetStopLossHistoryString returns formatted stop-loss history
+// GetStopLossHistoryString 返回格式化的止损历史字符串
+func (p *Position) GetStopLossHistoryString() string {
+	if len(p.StopLossHistory) == 0 {
+		return "无止损变更历史"
+	}
+
+	result := ""
+	for i, event := range p.StopLossHistory {
+		result += fmt.Sprintf("%d. %s: %.2f → %.2f (%s, 由%s触发)\n",
+			i+1,
+			event.Time.Format("15:04:05"),
+			event.OldStop,
+			event.NewStop,
+			event.Reason,
+			event.Trigger)
+	}
+	return result
 }

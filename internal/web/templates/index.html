@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>加密货币交易机器人 - 监控面板</title>
+    <title>加密货币交易机器人 - 监控面板 (完整版)</title>
     <style>
         * {
             margin: 0;
@@ -19,7 +19,7 @@
         }
 
         .container {
-            max-width: 1400px;
+            max-width: 1600px;
             margin: 0 auto;
             padding: 20px;
         }
@@ -69,6 +69,11 @@
             color: white;
         }
 
+        .badge-danger {
+            background: #ef4444;
+            color: white;
+        }
+
         .badge-info {
             background: #3b82f6;
             color: white;
@@ -107,17 +112,95 @@
             letter-spacing: 0.5px;
         }
 
-        .sessions-container {
+        .symbol-selector {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 25px;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.15);
+        }
+
+        .symbol-tabs {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .symbol-tab {
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: 2px solid #667eea;
+            background: white;
+            color: #667eea;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 600;
+        }
+
+        .symbol-tab:hover {
+            background: #667eea;
+            color: white;
+        }
+
+        .symbol-tab.active {
+            background: #667eea;
+            color: white;
+        }
+
+        .positions-container {
             background: rgba(255, 255, 255, 0.95);
             padding: 25px;
             border-radius: 12px;
             box-shadow: 0 5px 20px rgba(0, 0, 0, 0.15);
+            margin-bottom: 25px;
         }
 
         h2 {
             color: #667eea;
             margin-bottom: 20px;
             font-size: 1.6em;
+        }
+
+        .position-list {
+            display: grid;
+            gap: 15px;
+        }
+
+        .position-item {
+            background: #f9fafb;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 4px solid #10b981;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .position-item.short {
+            border-left-color: #ef4444;
+        }
+
+        .position-detail {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .position-detail-label {
+            color: #6b7280;
+            font-size: 0.85em;
+            margin-bottom: 4px;
+        }
+
+        .position-detail-value {
+            font-weight: 600;
+            font-size: 1.1em;
+        }
+
+        .sessions-container {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.15);
         }
 
         .session-list {
@@ -156,6 +239,62 @@
             font-size: 0.9em;
         }
 
+        .session-main-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .session-info {
+            flex: 1;
+        }
+
+        .session-action {
+            flex-shrink: 0;
+        }
+
+        .action-badge {
+            display: inline-block;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.85em;
+            letter-spacing: 0.5px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+            transition: all 0.2s;
+        }
+
+        .action-badge:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+        }
+
+        .action-buy {
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: white;
+        }
+
+        .action-sell {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            color: white;
+        }
+
+        .action-close {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            color: white;
+        }
+
+        .action-hold {
+            background: linear-gradient(135deg, #6b7280, #4b5563);
+            color: white;
+        }
+
+        .action-unknown {
+            background: linear-gradient(135deg, #9ca3af, #6b7280);
+            color: white;
+        }
+
         .session-decision {
             margin-top: 10px;
             padding: 10px;
@@ -168,7 +307,7 @@
             text-overflow: ellipsis;
         }
 
-        .no-sessions {
+        .no-data {
             text-align: center;
             padding: 40px;
             color: #6b7280;
@@ -182,11 +321,6 @@
             margin-top: 20px;
             color: #6b7280;
             font-size: 0.9em;
-        }
-
-        .icon {
-            display: inline-block;
-            margin-right: 5px;
         }
 
         @keyframes pulse {
@@ -207,6 +341,16 @@
             animation: pulse 2s ease-in-out infinite;
             margin-right: 5px;
         }
+
+        .profit-positive {
+            color: #10b981;
+            font-weight: 700;
+        }
+
+        .profit-negative {
+            color: #ef4444;
+            font-weight: 700;
+        }
     </style>
     <script>
         // Auto refresh every 30 seconds
@@ -218,7 +362,7 @@
 <body>
     <div class="container">
         <header>
-            <h1>🤖 加密货币交易机器人</h1>
+            <h1>🤖 加密货币交易机器人 (完整版)</h1>
             <div class="status-bar">
                 <div class="status-item">
                     <span class="live-indicator"></span>
@@ -226,7 +370,9 @@
                 </div>
                 <div class="status-item">
                     <strong>交易对:</strong>
-                    <span class="badge badge-info">{{.Symbol}}</span>
+                    {{range $i, $symbol := .Symbols}}
+                        <span class="badge badge-info">{{$symbol}}</span>
+                    {{end}}
                 </div>
                 <div class="status-item">
                     <strong>时间周期:</strong>
@@ -237,7 +383,23 @@
                     {{if .TestMode}}
                     <span class="badge badge-success">测试模式</span>
                     {{else}}
-                    <span class="badge badge-warning">实盘模式</span>
+                    <span class="badge badge-danger">实盘模式</span>
+                    {{end}}
+                </div>
+                <div class="status-item">
+                    <strong>自动执行:</strong>
+                    {{if .AutoExecute}}
+                    <span class="badge badge-success">已启用</span>
+                    {{else}}
+                    <span class="badge badge-warning">未启用</span>
+                    {{end}}
+                </div>
+                <div class="status-item">
+                    <strong>杠杆:</strong>
+                    {{if .LeverageDynamic}}
+                    <span class="badge badge-info">{{.LeverageMin}}-{{.LeverageMax}}x (动态)</span>
+                    {{else}}
+                    <span class="badge badge-info">{{.LeverageMin}}x (固定)</span>
                     {{end}}
                 </div>
                 <div class="status-item">
@@ -268,7 +430,64 @@
                 <div class="stat-label">执行率</div>
                 <div class="stat-value">{{printf "%.1f" (index .Stats "execution_rate")}}%</div>
             </div>
+            <div class="stat-card">
+                <div class="stat-label">活跃持仓</div>
+                <div class="stat-value">{{len .Positions}}</div>
+            </div>
         </div>
+
+        {{if .Positions}}
+        <div class="positions-container">
+            <h2>💼 活跃持仓</h2>
+            <div class="position-list">
+                {{range .Positions}}
+                <div class="position-item {{if eq .Side "short"}}short{{end}}">
+                    <div class="position-detail">
+                        <div class="position-detail-label">交易对</div>
+                        <div class="position-detail-value">{{.Symbol}}</div>
+                    </div>
+                    <div class="position-detail">
+                        <div class="position-detail-label">方向</div>
+                        <div class="position-detail-value">
+                            {{if eq .Side "long"}}📈 多头{{else}}📉 空头{{end}}
+                        </div>
+                    </div>
+                    <div class="position-detail">
+                        <div class="position-detail-label">杠杆</div>
+                        <div class="position-detail-value">{{.Leverage}}x</div>
+                    </div>
+                    <div class="position-detail">
+                        <div class="position-detail-label">入场价格</div>
+                        <div class="position-detail-value">${{printf "%.2f" .EntryPrice}}</div>
+                    </div>
+                    <div class="position-detail">
+                        <div class="position-detail-label">当前价格</div>
+                        <div class="position-detail-value">${{printf "%.2f" .CurrentPrice}}</div>
+                    </div>
+                    <div class="position-detail">
+                        <div class="position-detail-label">止损类型</div>
+                        <div class="position-detail-value">
+                            {{if eq .StopLossType "fixed"}}固定止损
+                            {{else if eq .StopLossType "breakeven"}}保本止损
+                            {{else if eq .StopLossType "trailing"}}追踪止损
+                            {{else}}{{.StopLossType}}{{end}}
+                        </div>
+                    </div>
+                    <div class="position-detail">
+                        <div class="position-detail-label">当前止损</div>
+                        <div class="position-detail-value">${{printf "%.2f" .CurrentStopLoss}}</div>
+                    </div>
+                    <div class="position-detail">
+                        <div class="position-detail-label">未实现盈亏</div>
+                        <div class="position-detail-value {{if gt .UnrealizedPnL 0}}profit-positive{{else}}profit-negative{{end}}">
+                            {{printf "%+.2f%%" (mul .UnrealizedPnL 100)}}
+                        </div>
+                    </div>
+                </div>
+                {{end}}
+            </div>
+        </div>
+        {{end}}
 
         <div class="sessions-container">
             <h2>📊 最近的分析会话</h2>
@@ -280,10 +499,30 @@
                         <span class="session-id">会话 #{{.ID}}</span>
                         <span class="session-time">{{.CreatedAt.Format "2006-01-02 15:04:05"}}</span>
                     </div>
-                    <div>
-                        <strong>交易对:</strong> {{.Symbol}} |
-                        <strong>时间周期:</strong> {{.Timeframe}} |
-                        <strong>已执行:</strong> {{if .Executed}}✅ 是{{else}}⏸ 否{{end}}
+                    <div class="session-main-info">
+                        <div class="session-info">
+                            <strong>交易对:</strong> {{.Symbol}} |
+                            <strong>时间周期:</strong> {{.Timeframe}} |
+                            <strong>已执行:</strong> {{if .Executed}}✅ 是{{else}}⏸ 否{{end}}
+                        </div>
+                        {{if .Decision}}
+                        <div class="session-action">
+                            {{$action := extractAction .Decision}}
+                            {{if eq $action "BUY"}}
+                                <span class="action-badge action-buy">📈 BUY</span>
+                            {{else if eq $action "SELL"}}
+                                <span class="action-badge action-sell">📉 SELL</span>
+                            {{else if eq $action "CLOSE_LONG"}}
+                                <span class="action-badge action-close">🔒 平多</span>
+                            {{else if eq $action "CLOSE_SHORT"}}
+                                <span class="action-badge action-close">🔒 平空</span>
+                            {{else if eq $action "HOLD"}}
+                                <span class="action-badge action-hold">💤 HOLD</span>
+                            {{else}}
+                                <span class="action-badge action-unknown">❓ {{$action}}</span>
+                            {{end}}
+                        </div>
+                        {{end}}
                     </div>
                     {{if .Decision}}
                     <div class="session-decision">
@@ -294,7 +533,7 @@
                 {{end}}
             </div>
             {{else}}
-            <div class="no-sessions">
+            <div class="no-data">
                 <p>暂无分析会话记录</p>
                 <p style="margin-top: 10px; font-size: 0.9em;">运行主程序后，分析结果将显示在这里</p>
             </div>
@@ -302,7 +541,10 @@
         </div>
 
         <div class="refresh-info">
-            ⏱ 页面将在 30 秒后自动刷新
+            ⏱ 页面将在 30 秒后自动刷新 |
+            <a href="/api/positions" style="color: #667eea; text-decoration: none;">API: 持仓</a> |
+            <a href="/api/symbols" style="color: #667eea; text-decoration: none;">API: 交易对</a> |
+            <a href="/api/stats" style="color: #667eea; text-decoration: none;">API: 统计</a>
         </div>
     </div>
 </body>

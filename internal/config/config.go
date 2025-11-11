@@ -17,11 +17,12 @@ type Config struct {
 	DatabasePath string
 
 	// LLM Configuration
-	LLMProvider   string
-	DeepThinkLLM  string
-	QuickThinkLLM string
-	BackendURL    string
-	APIKey        string
+	LLMProvider      string
+	DeepThinkLLM     string
+	QuickThinkLLM    string
+	BackendURL       string
+	APIKey           string
+	TraderPromptPath string // 交易策略 Prompt 文件路径 / Path to trader strategy prompt file
 
 	// Agent behavior
 	MaxDebateRounds      int
@@ -40,7 +41,10 @@ type Config struct {
 	BinanceAPISecret            string
 	BinanceProxy                string
 	BinanceProxyInsecureSkipTLS bool // 是否跳过代理 TLS 验证（某些代理需要）/ Skip TLS verification for proxy (required by some proxies)
-	BinanceLeverage             int
+	BinanceLeverage             int  // 固定杠杆（向后兼容）/ Fixed leverage (backward compatible)
+	BinanceLeverageMin          int  // 最小杠杆 / Minimum leverage
+	BinanceLeverageMax          int  // 最大杠杆 / Maximum leverage
+	BinanceLeverageDynamic      bool // 是否启用动态杠杆 / Enable dynamic leverage
 	BinanceTestMode             bool
 	BinancePositionMode         string
 
@@ -53,10 +57,19 @@ type Config struct {
 	PositionSize       float64
 	MaxPositionSize    float64
 
-	// Risk management
-	MaxDrawdown          float64
-	RiskPerTrade         float64
-	VolatilityMultiplier float64
+	// Stop-loss management configuration
+	// 止损管理配置
+	StopLossStrategy         string  // fixed, breakeven, trailing / 止损策略
+	EnableBreakeven          bool    // 是否启用保本 / Enable breakeven
+	BreakevenTrigger         float64 // 保本触发点（盈亏比）/ Breakeven trigger ratio
+	EnableTrailing           bool    // 是否启用追踪止损 / Enable trailing stop
+	TrailingTrigger          float64 // 追踪止损触发点（盈亏比）/ Trailing trigger ratio
+	TrailingDistanceInitial  float64 // 初始追踪距离 / Initial trailing distance
+	TrailingDistanceTight    float64 // 收紧后的距离 / Tightened distance
+	TrailingTightenProfit    float64 // 收紧触发利润 / Profit to tighten
+	EnablePartialTakeProfit  bool    // 是否启用分批止盈 / Enable partial TP
+	PartialTakeProfitRatio   float64 // 分批止盈比例 / Partial TP ratio
+	PartialTakeProfitTrigger float64 // 分批止盈触发点 / Partial TP trigger
 
 	// Memory system
 	UseMemory  bool
@@ -103,11 +116,12 @@ func LoadConfig(pathToEnv string) (*Config, error) {
 		DatabasePath: viper.GetString("DATABASE_PATH"),
 
 		// LLM Configuration
-		LLMProvider:   viper.GetString("LLM_PROVIDER"),
-		DeepThinkLLM:  viper.GetString("DEEP_THINK_LLM"),
-		QuickThinkLLM: viper.GetString("QUICK_THINK_LLM"),
-		BackendURL:    viper.GetString("LLM_BACKEND_URL"),
-		APIKey:        viper.GetString("OPENAI_API_KEY"),
+		LLMProvider:      viper.GetString("LLM_PROVIDER"),
+		DeepThinkLLM:     viper.GetString("DEEP_THINK_LLM"),
+		QuickThinkLLM:    viper.GetString("QUICK_THINK_LLM"),
+		BackendURL:       viper.GetString("LLM_BACKEND_URL"),
+		APIKey:           viper.GetString("OPENAI_API_KEY"),
+		TraderPromptPath: viper.GetString("TRADER_PROMPT_PATH"),
 
 		// Agent behavior
 		MaxDebateRounds:      viper.GetInt("MAX_DEBATE_ROUNDS"),
@@ -136,10 +150,18 @@ func LoadConfig(pathToEnv string) (*Config, error) {
 		PositionSize:       viper.GetFloat64("POSITION_SIZE"),
 		MaxPositionSize:    viper.GetFloat64("MAX_POSITION_SIZE"),
 
-		// Risk management
-		MaxDrawdown:          viper.GetFloat64("MAX_DRAWDOWN"),
-		RiskPerTrade:         viper.GetFloat64("RISK_PER_TRADE"),
-		VolatilityMultiplier: viper.GetFloat64("VOLATILITY_MULTIPLIER"),
+		// Stop-loss management
+		StopLossStrategy:         viper.GetString("STOPLOSS_STRATEGY"),
+		EnableBreakeven:          viper.GetBool("STOPLOSS_ENABLE_BREAKEVEN"),
+		BreakevenTrigger:         viper.GetFloat64("STOPLOSS_BREAKEVEN_TRIGGER"),
+		EnableTrailing:           viper.GetBool("STOPLOSS_ENABLE_TRAILING"),
+		TrailingTrigger:          viper.GetFloat64("STOPLOSS_TRAILING_TRIGGER"),
+		TrailingDistanceInitial:  viper.GetFloat64("STOPLOSS_TRAILING_DISTANCE_INITIAL"),
+		TrailingDistanceTight:    viper.GetFloat64("STOPLOSS_TRAILING_DISTANCE_TIGHT"),
+		TrailingTightenProfit:    viper.GetFloat64("STOPLOSS_TRAILING_TIGHTEN_PROFIT"),
+		EnablePartialTakeProfit:  viper.GetBool("STOPLOSS_ENABLE_PARTIAL_TP"),
+		PartialTakeProfitRatio:   viper.GetFloat64("STOPLOSS_PARTIAL_TP_RATIO"),
+		PartialTakeProfitTrigger: viper.GetFloat64("STOPLOSS_PARTIAL_TP_TRIGGER"),
 
 		// Memory system
 		UseMemory:  viper.GetBool("USE_MEMORY"),
@@ -182,6 +204,41 @@ func LoadConfig(pathToEnv string) (*Config, error) {
 		cfg.CryptoSymbols = []string{"BTC/USDT"}
 	}
 
+	// Parse leverage range (support "10-20" format)
+	// 解析杠杆范围（支持 "10-20" 格式）
+	leverageStr := viper.GetString("BINANCE_LEVERAGE")
+	if strings.Contains(leverageStr, "-") {
+		// Dynamic leverage: parse min and max
+		// 动态杠杆：解析最小值和最大值
+		parts := strings.Split(leverageStr, "-")
+		if len(parts) == 2 {
+			minLev := 0
+			maxLev := 0
+			fmt.Sscanf(strings.TrimSpace(parts[0]), "%d", &minLev)
+			fmt.Sscanf(strings.TrimSpace(parts[1]), "%d", &maxLev)
+
+			if minLev > 0 && maxLev > 0 && minLev <= maxLev && maxLev <= 125 {
+				cfg.BinanceLeverageMin = minLev
+				cfg.BinanceLeverageMax = maxLev
+				cfg.BinanceLeverageDynamic = true
+				cfg.BinanceLeverage = minLev // Default to min for safety
+			} else {
+				// Invalid range, fallback to default
+				// 无效范围，回退到默认值
+				cfg.BinanceLeverage = 10
+				cfg.BinanceLeverageMin = 10
+				cfg.BinanceLeverageMax = 10
+				cfg.BinanceLeverageDynamic = false
+			}
+		}
+	} else {
+		// Fixed leverage
+		// 固定杠杆
+		cfg.BinanceLeverageMin = cfg.BinanceLeverage
+		cfg.BinanceLeverageMax = cfg.BinanceLeverage
+		cfg.BinanceLeverageDynamic = false
+	}
+
 	return cfg, nil
 }
 
@@ -194,6 +251,7 @@ func setDefaults() {
 	viper.SetDefault("DEEP_THINK_LLM", "gpt-4o")
 	viper.SetDefault("QUICK_THINK_LLM", "gpt-4o-mini")
 	viper.SetDefault("LLM_BACKEND_URL", "https://api.openai.com/v1")
+	viper.SetDefault("TRADER_PROMPT_PATH", "prompts/trader_system.txt")
 
 	viper.SetDefault("MAX_DEBATE_ROUNDS", 2)
 	viper.SetDefault("MAX_RISK_DISCUSS_ROUNDS", 2)
@@ -213,9 +271,19 @@ func setDefaults() {
 	viper.SetDefault("POSITION_SIZE", 0.001)
 	viper.SetDefault("MAX_POSITION_SIZE", 0.01)
 
-	viper.SetDefault("MAX_DRAWDOWN", 0.15)
-	viper.SetDefault("RISK_PER_TRADE", 0.02)
-	viper.SetDefault("VOLATILITY_MULTIPLIER", 1.5)
+	// Stop-loss management defaults (based on trading philosophy)
+	// 止损管理默认值（基于交易哲学）
+	viper.SetDefault("STOPLOSS_STRATEGY", "trailing")            // trailing (推荐), breakeven, fixed
+	viper.SetDefault("STOPLOSS_ENABLE_BREAKEVEN", true)          // 启用保本 / Enable breakeven
+	viper.SetDefault("STOPLOSS_BREAKEVEN_TRIGGER", 0.025)        // 2.5% 利润时保本 / Breakeven at 2.5% profit (1:1 risk/reward)
+	viper.SetDefault("STOPLOSS_ENABLE_TRAILING", true)           // 启用追踪止损 / Enable trailing
+	viper.SetDefault("STOPLOSS_TRAILING_TRIGGER", 0.05)          // 5% 利润启动追踪 / Start trailing at 5% profit (2:1 risk/reward)
+	viper.SetDefault("STOPLOSS_TRAILING_DISTANCE_INITIAL", 0.03) // 初始追踪距离 3% / Initial trailing distance
+	viper.SetDefault("STOPLOSS_TRAILING_DISTANCE_TIGHT", 0.02)   // 收紧到 2% / Tighten to 2%
+	viper.SetDefault("STOPLOSS_TRAILING_TIGHTEN_PROFIT", 0.10)   // 10% 利润时收紧 / Tighten at 10% profit
+	viper.SetDefault("STOPLOSS_ENABLE_PARTIAL_TP", false)        // 不推荐分批止盈 / Partial TP not recommended
+	viper.SetDefault("STOPLOSS_PARTIAL_TP_RATIO", 0.3)           // 平 30% 仓位 / Close 30% of position
+	viper.SetDefault("STOPLOSS_PARTIAL_TP_TRIGGER", 0.075)       // 7.5% 利润触发 / Trigger at 7.5% profit (3:1 risk/reward)
 
 	viper.SetDefault("USE_MEMORY", true)
 	viper.SetDefault("MEMORY_TOP_K", 3)

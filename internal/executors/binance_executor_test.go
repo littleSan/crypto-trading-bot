@@ -36,7 +36,7 @@ func TestBinanceConnecting(t *testing.T) {
 		BinanceProxy:                "http://192.168.0.226:6152",
 		BinanceProxyInsecureSkipTLS: true, // 设置为 true 以跳过 TLS 验证（某些代理需要）/ Set to true to skip TLS verification (required by some proxies)
 		BinanceLeverage:             10,
-		BinanceTestMode:             true,
+		BinanceTestMode:             false,
 		BinancePositionMode:         "oneway",
 	}
 
