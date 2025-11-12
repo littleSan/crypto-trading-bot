@@ -53,8 +53,8 @@ type Config struct {
 	CryptoSymbols      []string // 交易对列表（支持单个或多个，用逗号分隔）/ Trading pairs list (supports single or multiple, comma-separated)
 	CryptoTimeframe    string
 	CryptoLookbackDays int
-	PositionSize       float64
-	MaxPositionSize    float64
+	// PositionSize removed - now uses LLM's position size recommendation
+	// 移除 PositionSize - 现在使用 LLM 的仓位建议
 
 	// Stop-loss management configuration
 	// 止损管理配置
@@ -145,8 +145,7 @@ func LoadConfig(pathToEnv string) (*Config, error) {
 		// Trading parameters
 		CryptoTimeframe:    viper.GetString("CRYPTO_TIMEFRAME"),
 		CryptoLookbackDays: viper.GetInt("CRYPTO_LOOKBACK_DAYS"),
-		PositionSize:       viper.GetFloat64("POSITION_SIZE"),
-		MaxPositionSize:    viper.GetFloat64("MAX_POSITION_SIZE"),
+		// PositionSize removed - now uses LLM's position size recommendation
 
 		// Stop-loss management
 		StopLossStrategy:         viper.GetString("STOPLOSS_STRATEGY"),
@@ -260,8 +259,8 @@ func setDefaults() {
 
 	viper.SetDefault("CRYPTO_SYMBOL", "BTC/USDT")
 	viper.SetDefault("CRYPTO_TIMEFRAME", "1h")
-	viper.SetDefault("POSITION_SIZE", 0.001)
-	viper.SetDefault("MAX_POSITION_SIZE", 0.01)
+	// POSITION_SIZE removed - now uses LLM's position size recommendation
+	// 移除 POSITION_SIZE - 现在使用 LLM 的仓位建议
 
 	// Stop-loss management defaults (based on trading philosophy)
 	// 止损管理默认值（基于交易哲学）
@@ -337,13 +336,8 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("BINANCE_API_KEY and BINANCE_API_SECRET are required")
 	}
 
-	if c.PositionSize <= 0 {
-		return fmt.Errorf("POSITION_SIZE must be greater than 0")
-	}
-
-	if c.MaxPositionSize < c.PositionSize {
-		return fmt.Errorf("MAX_POSITION_SIZE must be >= POSITION_SIZE")
-	}
+	// PositionSize validation removed - now relies on LLM's position size recommendation
+	// 移除 PositionSize 验证 - 现在依赖 LLM 的仓位建议
 
 	return nil
 }

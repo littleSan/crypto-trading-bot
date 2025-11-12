@@ -646,6 +646,69 @@ func (s *Storage) GetPositionsBySymbol(symbol string) ([]*PositionRecord, error)
 	return positions, rows.Err()
 }
 
+// GetPositionByID retrieves a single position by its ID
+// GetPositionByID 根据 ID 获取单个持仓
+func (s *Storage) GetPositionByID(positionID string) (*PositionRecord, error) {
+	query := `
+	SELECT id, symbol, side, entry_price, entry_time, quantity, leverage,
+		   initial_stop_loss, current_stop_loss, stop_loss_type,
+		   trailing_distance, highest_price, current_price,
+		   unrealized_pnl, open_reason, atr, closed,
+		   close_time, close_price, close_reason, realized_pnl
+	FROM positions
+	WHERE id = ?
+	LIMIT 1
+	`
+
+	row := s.db.QueryRow(query, positionID)
+
+	pos := &PositionRecord{}
+	var trailingDistance, unrealizedPnL, atr, closePrice, realizedPnL sql.NullFloat64
+	var closeTime sql.NullTime
+	var closeReason sql.NullString
+
+	err := row.Scan(
+		&pos.ID, &pos.Symbol, &pos.Side, &pos.EntryPrice, &pos.EntryTime, &pos.Quantity, &pos.Leverage,
+		&pos.InitialStopLoss, &pos.CurrentStopLoss, &pos.StopLossType,
+		&trailingDistance, &pos.HighestPrice, &pos.CurrentPrice,
+		&unrealizedPnL, &pos.OpenReason, &atr, &pos.Closed,
+		&closeTime, &closePrice, &closeReason, &realizedPnL,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, nil // No position found / 未找到持仓
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get position: %w", err)
+	}
+
+	// Handle NULL values
+	// 处理 NULL 值
+	if trailingDistance.Valid {
+		pos.TrailingDistance = trailingDistance.Float64
+	}
+	if unrealizedPnL.Valid {
+		pos.UnrealizedPnL = unrealizedPnL.Float64
+	}
+	if atr.Valid {
+		pos.ATR = atr.Float64
+	}
+	if closeTime.Valid {
+		pos.CloseTime = &closeTime.Time
+	}
+	if closePrice.Valid {
+		pos.ClosePrice = closePrice.Float64
+	}
+	if closeReason.Valid {
+		pos.CloseReason = closeReason.String
+	}
+	if realizedPnL.Valid {
+		pos.RealizedPnL = realizedPnL.Float64
+	}
+
+	return pos, nil
+}
+
 // SaveStopLossEvent saves a stop-loss event to the database
 // SaveStopLossEvent 保存止损事件到数据库
 func (s *Storage) SaveStopLossEvent(event *StopLossEvent) error {

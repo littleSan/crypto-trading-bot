@@ -333,13 +333,36 @@ func runTradingAnalysis(ctx context.Context, cfg *config.Config, log *logger.Col
 		}
 	}
 
-	// Save session to database for each symbol
-	// 为每个交易对保存分析结果到数据库
+	// Save session to database for each symbol with symbol-specific decision
+	// 为每个交易对保存分析结果到数据库，包含该交易对的专属决策
 	log.Subheader("保存分析结果", '─', 80)
+
+	// Parse multi-currency decision to extract symbol-specific decisions
+	// 解析多币种决策以提取每个交易对的专属决策
+	symbolDecisions := agents.ParseMultiCurrencyDecision(decision, cfg.CryptoSymbols)
+
 	for _, symbol := range cfg.CryptoSymbols {
 		reports := state.GetSymbolReports(symbol)
 		if reports == nil {
 			continue
+		}
+
+		// Get symbol-specific decision text
+		// 获取该交易对的专属决策文本
+		symbolDecision := decision // Default to full decision
+		if parsedDecision, ok := symbolDecisions[symbol]; ok && parsedDecision.Valid {
+			// Format symbol-specific decision for display
+			// 格式化该交易对的专属决策用于显示
+			symbolDecision = fmt.Sprintf(`【%s】
+**交易方向**: %s
+**置信度**: %.2f
+**杠杆倍数**: %d倍
+**理由**: %s`,
+				symbol,
+				parsedDecision.Action,
+				parsedDecision.Confidence,
+				parsedDecision.Leverage,
+				parsedDecision.Reason)
 		}
 
 		session := &storage.TradingSession{
@@ -350,7 +373,7 @@ func runTradingAnalysis(ctx context.Context, cfg *config.Config, log *logger.Col
 			CryptoReport:    reports.CryptoReport,
 			SentimentReport: reports.SentimentReport,
 			PositionInfo:    reports.PositionInfo,
-			Decision:        decision,
+			Decision:        symbolDecision, // ✅ Symbol-specific decision instead of full text
 			Executed:        false,
 			ExecutionResult: "",
 		}
@@ -444,7 +467,14 @@ func runTradingAnalysis(ctx context.Context, cfg *config.Config, log *logger.Col
 
 			// Execute the trade using coordinator
 			// 使用协调器执行交易
-			result, err := coordinator.ExecuteDecision(ctx, symbol, symbolDecision.Action, symbolDecision.Reason)
+			result, err := coordinator.ExecuteDecisionWithParams(
+				ctx,
+				symbol,
+				symbolDecision.Action,
+				symbolDecision.Reason,
+				symbolDecision.Leverage,
+				symbolDecision.PositionSizePercent,
+			)
 			if err != nil {
 				log.Error(fmt.Sprintf("❌ %s 交易执行失败: %v", symbol, err))
 				executionResults[symbol] = fmt.Sprintf("执行失败: %v", err)

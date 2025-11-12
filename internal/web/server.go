@@ -380,11 +380,56 @@ func (s *Server) handleCurrentBalance(ctx context.Context, c *app.RequestContext
 		return
 	}
 
-	// Update positions for all symbols
-	// 更新所有交易对的持仓信息
+	// Update positions for all symbols and sync to database
+	// 更新所有交易对的持仓信息并同步到数据库
 	for _, symbol := range s.config.CryptoSymbols {
 		if err := portfolioMgr.UpdatePosition(ctx, symbol); err != nil {
 			s.logger.Warning(fmt.Sprintf("⚠️  获取 %s 持仓信息失败: %v", symbol, err))
+			continue
+		}
+
+		// Sync position to database
+		// 将持仓信息同步到数据库
+		position := portfolioMgr.GetPosition(symbol)
+		if position != nil && position.Size > 0 {
+			// Convert executors.Position to storage.PositionRecord
+			// 将 executors.Position 转换为 storage.PositionRecord
+			posRecord := &storage.PositionRecord{
+				ID:               position.ID,
+				Symbol:           position.Symbol,
+				Side:             position.Side,
+				EntryPrice:       position.EntryPrice,
+				EntryTime:        position.EntryTime,
+				Quantity:         position.Size,
+				Leverage:         position.Leverage,
+				CurrentPrice:     position.CurrentPrice,
+				HighestPrice:     position.HighestPrice,
+				UnrealizedPnL:    position.UnrealizedPnL,
+				InitialStopLoss:  position.InitialStopLoss,
+				CurrentStopLoss:  position.CurrentStopLoss,
+				StopLossType:     position.StopLossType,
+				TrailingDistance: position.TrailingDistance,
+				ATR:              position.ATR,
+				OpenReason:       "", // Not available from real-time query
+				Closed:           false,
+			}
+
+			// Check if position exists in database
+			// 检查持仓是否已存在于数据库
+			existingPos, err := s.storage.GetPositionByID(posRecord.ID)
+			if err != nil || existingPos == nil {
+				// New position, save it
+				// 新持仓，保存到数据库
+				if err := s.storage.SavePosition(posRecord); err != nil {
+					s.logger.Warning(fmt.Sprintf("⚠️  保存 %s 持仓失败: %v", symbol, err))
+				}
+			} else {
+				// Existing position, update it
+				// 已存在的持仓，更新数据库
+				if err := s.storage.UpdatePosition(posRecord); err != nil {
+					s.logger.Warning(fmt.Sprintf("⚠️  更新 %s 持仓失败: %v", symbol, err))
+				}
+			}
 		}
 	}
 

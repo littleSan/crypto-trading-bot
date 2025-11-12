@@ -30,10 +30,24 @@ func NewTradeCoordinator(cfg *config.Config, executor *BinanceExecutor, log *log
 // ExecuteDecision executes a trading decision with full safety checks
 // ExecuteDecision 执行交易决策并进行完整的安全检查
 func (tc *TradeCoordinator) ExecuteDecision(ctx context.Context, symbol string, action TradeAction, reason string) (*TradeResult, error) {
+	// Use default values (no leverage/position size override)
+	// 使用默认值（不覆盖杠杆/仓位大小）
+	return tc.ExecuteDecisionWithParams(ctx, symbol, action, reason, 0, 0)
+}
+
+// ExecuteDecisionWithParams executes a trading decision with custom leverage and position size
+// ExecuteDecisionWithParams 使用自定义杠杆和仓位大小执行交易决策
+func (tc *TradeCoordinator) ExecuteDecisionWithParams(ctx context.Context, symbol string, action TradeAction, reason string, leverage int, positionSizePercent float64) (*TradeResult, error) {
 	tc.logger.Header("交易执行协调器", '=', 80)
 	tc.logger.Info(fmt.Sprintf("交易对: %s", symbol))
 	tc.logger.Info(fmt.Sprintf("决策动作: %s", action))
 	tc.logger.Info(fmt.Sprintf("决策理由: %s", reason))
+	if leverage > 0 {
+		tc.logger.Info(fmt.Sprintf("LLM 建议杠杆: %dx", leverage))
+	}
+	if positionSizePercent > 0 {
+		tc.logger.Info(fmt.Sprintf("LLM 建议仓位: %.1f%% 资金", positionSizePercent))
+	}
 
 	// Step 1: Pre-execution safety checks
 	// 步骤 1: 执行前安全检查
@@ -72,7 +86,7 @@ func (tc *TradeCoordinator) ExecuteDecision(ctx context.Context, symbol string, 
 	// Step 4: Calculate position size
 	// 步骤 4: 计算仓位大小
 	tc.logger.Info("\n[步骤 4/5] 计算仓位大小...")
-	positionSize, err := tc.calculatePositionSize(ctx, symbol, action, currentPosition)
+	positionSize, err := tc.calculatePositionSize(ctx, symbol, action, currentPosition, leverage, positionSizePercent)
 	if err != nil {
 		tc.logger.Error(fmt.Sprintf("❌ 仓位计算失败: %v", err))
 		return nil, fmt.Errorf("position size calculation failed: %w", err)
@@ -192,7 +206,7 @@ func (tc *TradeCoordinator) validateAction(action TradeAction, currentPosition *
 
 // calculatePositionSize calculates the position size for the trade
 // calculatePositionSize 计算交易的仓位大小
-func (tc *TradeCoordinator) calculatePositionSize(ctx context.Context, symbol string, action TradeAction, currentPosition *Position) (float64, error) {
+func (tc *TradeCoordinator) calculatePositionSize(ctx context.Context, symbol string, action TradeAction, currentPosition *Position, llmLeverage int, positionSizePercent float64) (float64, error) {
 	// For close actions, use the current position size
 	// 平仓动作使用当前持仓大小
 	if action == ActionCloseLong || action == ActionCloseShort {
@@ -202,9 +216,55 @@ func (tc *TradeCoordinator) calculatePositionSize(ctx context.Context, symbol st
 		return currentPosition.Size, nil
 	}
 
-	// For open actions, use configured position size
-	// 开仓动作使用配置的仓位大小
-	return tc.config.PositionSize, nil
+	// For open actions, LLM MUST provide position size recommendation
+	// 开仓动作必须由 LLM 提供仓位建议
+	if positionSizePercent <= 0 {
+		return 0, fmt.Errorf("❌ LLM 未提供仓位建议（positionSizePercent = %.1f%%），拒绝交易。请确保 LLM 决策中包含'仓位建议: XX%%'字段", positionSizePercent)
+	}
+
+	// Validate position size percentage range
+	// 验证仓位百分比范围
+	if positionSizePercent > 100 {
+		return 0, fmt.Errorf("❌ LLM 仓位建议超过 100%% (%.1f%%)，拒绝交易", positionSizePercent)
+	}
+
+	// Get account balance
+	// 获取账户余额
+	balance, err := tc.executor.GetBalance(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("获取账户余额失败: %w", err)
+	}
+
+	// Get current price
+	// 获取当前价格
+	currentPrice, err := tc.executor.GetCurrentPrice(ctx, symbol)
+	if err != nil {
+		return 0, fmt.Errorf("获取当前价格失败: %w", err)
+	}
+
+	// Calculate position size based on percentage
+	// 根据百分比计算仓位大小
+	// Formula: (Balance × Percentage%) / Price = Quantity
+	// 公式：(余额 × 百分比%) / 价格 = 数量
+	fundsToUse := balance * (positionSizePercent / 100.0)
+	rawSize := fundsToUse / currentPrice
+
+	tc.logger.Info(fmt.Sprintf("💰 账户余额: %.2f USDT", balance))
+	tc.logger.Info(fmt.Sprintf("📊 LLM 建议: %.1f%% 资金 = %.2f USDT", positionSizePercent, fundsToUse))
+	tc.logger.Info(fmt.Sprintf("💵 当前价格: $%.2f", currentPrice))
+	tc.logger.Info(fmt.Sprintf("📐 计算数量: %.2f USDT / $%.2f = %.4f %s",
+		fundsToUse, currentPrice, rawSize, symbol))
+
+	// Adjust quantity to meet symbol's precision and minimum quantity requirements
+	// 调整数量以符合交易对的精度和最小数量要求
+	adjustedSize, err := AdjustQuantityPrecision(symbol, rawSize)
+	if err != nil {
+		return 0, fmt.Errorf("精度调整失败: %w", err)
+	}
+
+	tc.logger.Info(fmt.Sprintf("原始数量: %.4f → 调整后: %.4f (符合 %s 精度要求)", rawSize, adjustedSize, symbol))
+
+	return adjustedSize, nil
 }
 
 // postExecutionVerification verifies the trade was executed correctly
