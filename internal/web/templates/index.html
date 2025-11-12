@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>加密货币交易机器人 - 监控面板</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 25px;
+            border-radius: 15px;
+            margin-bottom: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+
+        h1 {
+            color: #667eea;
+            font-size: 2.2em;
+            margin-bottom: 10px;
+        }
+
+        .status-bar {
+            display: flex;
+            gap: 30px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.95em;
+        }
+
+        .badge {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+
+        .badge-success {
+            background: #10b981;
+            color: white;
+        }
+
+        .badge-warning {
+            background: #f59e0b;
+            color: white;
+        }
+
+        .badge-danger {
+            background: #ef4444;
+            color: white;
+        }
+
+        .badge-info {
+            background: #3b82f6;
+            color: white;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 25px;
+        }
+
+        .stat-card {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.15);
+            transition: transform 0.2s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .stat-value {
+            font-size: 2.5em;
+            font-weight: 700;
+            color: #667eea;
+            margin: 10px 0;
+        }
+
+        .stat-label {
+            color: #6b7280;
+            font-size: 0.9em;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .symbol-selector {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 25px;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.15);
+        }
+
+        .symbol-tabs {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .symbol-tab {
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: 2px solid #667eea;
+            background: white;
+            color: #667eea;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 600;
+        }
+
+        .symbol-tab:hover {
+            background: #667eea;
+            color: white;
+        }
+
+        .symbol-tab.active {
+            background: #667eea;
+            color: white;
+        }
+
+        .positions-container {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.15);
+            margin-bottom: 25px;
+        }
+
+        h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 1.6em;
+        }
+
+        .position-list {
+            display: grid;
+            gap: 15px;
+        }
+
+        .position-item {
+            background: #f9fafb;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 4px solid #10b981;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .position-item.short {
+            border-left-color: #ef4444;
+        }
+
+        .position-detail {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .position-detail-label {
+            color: #6b7280;
+            font-size: 0.85em;
+            margin-bottom: 4px;
+        }
+
+        .position-detail-value {
+            font-weight: 600;
+            font-size: 1.1em;
+        }
+
+        .sessions-container {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.15);
+        }
+
+        .session-list {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .session-item {
+            background: #f9fafb;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+            transition: all 0.2s;
+        }
+
+        .session-item:hover {
+            background: #f3f4f6;
+            border-left-color: #764ba2;
+        }
+
+        .session-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .session-id {
+            font-weight: 600;
+            color: #667eea;
+        }
+
+        .session-time {
+            color: #6b7280;
+            font-size: 0.9em;
+        }
+
+        .session-main-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .session-info {
+            flex: 1;
+        }
+
+        .session-action {
+            flex-shrink: 0;
+        }
+
+        .action-badge {
+            display: inline-block;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.85em;
+            letter-spacing: 0.5px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+            transition: all 0.2s;
+        }
+
+        .action-badge:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+        }
+
+        .action-buy {
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: white;
+        }
+
+        .action-sell {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            color: white;
+        }
+
+        .action-close {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            color: white;
+        }
+
+        .action-hold {
+            background: linear-gradient(135deg, #6b7280, #4b5563);
+            color: white;
+        }
+
+        .action-unknown {
+            background: linear-gradient(135deg, #9ca3af, #6b7280);
+            color: white;
+        }
+
+        .session-decision {
+            margin-top: 10px;
+            padding: 10px;
+            background: white;
+            border-radius: 5px;
+            font-size: 0.9em;
+            color: #374151;
+            max-height: 100px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .no-data {
+            text-align: center;
+            padding: 40px;
+            color: #6b7280;
+        }
+
+        .refresh-info {
+            text-align: center;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: 8px;
+            margin-top: 20px;
+            color: #6b7280;
+            font-size: 0.9em;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        .live-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background: #10b981;
+            border-radius: 50%;
+            animation: pulse 2s ease-in-out infinite;
+            margin-right: 5px;
+        }
+
+        .profit-positive {
+            color: #10b981;
+            font-weight: 700;
+        }
+
+        .profit-negative {
+            color: #ef4444;
+            font-weight: 700;
+        }
+
+        .chart-container {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.15);
+            margin-bottom: 25px;
+        }
+
+        .chart-wrapper {
+            position: relative;
+            height: 400px;
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script>
+        // Global chart instance
+        let balanceChart = null;
+
+        // Auto refresh page every 5 minutes (chart updates every 30s via API)
+        // 每5分钟刷新页面（图表通过 API 每30秒更新）
+        setTimeout(function() {
+            location.reload();
+        }, 300000); // 5 minutes
+
+        // Countdown timer
+        function updateCountdown() {
+            const nextTradeTime = new Date("{{.NextTradeTime}}").getTime();
+            const now = new Date().getTime();
+            const distance = nextTradeTime - now;
+
+            if (distance < 0) {
+                document.getElementById("countdown").innerHTML = "正在分析中...";
+                return;
+            }
+
+            const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+            const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+            const seconds = Math.floor((distance % (1000 * 60)) / 1000);
+
+            document.getElementById("countdown").innerHTML =
+                hours.toString().padStart(2, '0') + ":" +
+                minutes.toString().padStart(2, '0') + ":" +
+                seconds.toString().padStart(2, '0');
+        }
+
+        // Update countdown every second
+        setInterval(updateCountdown, 1000);
+
+        // Load balance chart on page load
+        window.addEventListener('DOMContentLoaded', function() {
+            updateCountdown();
+            loadBalanceChart();
+        });
+
+        function loadBalanceChart() {
+            fetch('/api/balance/history?hours=24')
+                .then(response => response.json())
+                .then(data => {
+                    // Check if data is empty
+                    if (!data.timestamps || data.timestamps.length === 0) {
+                        document.getElementById('balanceChart').parentElement.innerHTML =
+                            '<div style="text-align: center; padding: 40px; color: #6b7280;">' +
+                            '<p>📊 暂无余额历史数据</p>' +
+                            '<p style="margin-top: 10px; font-size: 0.9em;">系统启动时会保存初始快照，之后每5分钟自动记录一次余额。</p>' +
+                            '<p style="margin-top: 5px; font-size: 0.9em;">页面将每30秒自动获取最新余额并更新图表...</p>' +
+                            '</div>';
+                        // Still start real-time updates even if no history
+                        // 即使没有历史数据也启动实时更新
+                        startRealtimeUpdates();
+                        return;
+                    }
+
+                    const ctx = document.getElementById('balanceChart').getContext('2d');
+                    balanceChart = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: data.timestamps,
+                            datasets: [
+                                {
+                                    label: '总余额 (USDT)',
+                                    data: data.total_balance,
+                                    borderColor: '#667eea',
+                                    backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                                    tension: 0.4,
+                                    fill: true
+                                },
+                                {
+                                    label: '可用余额 (USDT)',
+                                    data: data.available_balance,
+                                    borderColor: '#10b981',
+                                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                                    tension: 0.4,
+                                    fill: true
+                                },
+                                {
+                                    label: '未实现盈亏 (USDT)',
+                                    data: data.unrealized_pnl,
+                                    borderColor: '#f59e0b',
+                                    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                                    tension: 0.4,
+                                    fill: true
+                                }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: {
+                                    position: 'top',
+                                },
+                                title: {
+                                    display: true,
+                                    text: '账户余额历史 (实时更新)',
+                                    font: {
+                                        size: 16,
+                                        weight: 'bold'
+                                    }
+                                }
+                            },
+                            scales: {
+                                y: {
+                                    beginAtZero: false,
+                                    grace: '5%',  // 在数据范围上下各增加 5% 的空间
+                                    ticks: {
+                                        callback: function(value) {
+                                            return value.toFixed(2) + ' USDT';
+                                        }
+                                    }
+                                }
+                            },
+                            animation: {
+                                duration: 750
+                            }
+                        }
+                    });
+
+                    // Start real-time updates
+                    // 启动实时更新
+                    startRealtimeUpdates();
+                })
+                .catch(error => {
+                    console.error('加载余额历史失败:', error);
+                    document.getElementById('balanceChart').parentElement.innerHTML =
+                        '<div style="text-align: center; padding: 40px; color: #ef4444;">' +
+                        '<p>⚠️ 加载余额历史数据失败</p>' +
+                        '<p style="margin-top: 10px; font-size: 0.9em;">错误: ' + error.message + '</p>' +
+                        '</div>';
+                });
+        }
+
+        function startRealtimeUpdates() {
+            // Update immediately
+            // 立即更新一次
+            updateRealtimeBalance();
+
+            // Then update every 30 seconds
+            // 之后每30秒更新一次
+            setInterval(updateRealtimeBalance, 30000);
+        }
+
+        function updateRealtimeBalance() {
+            fetch('/api/balance/current')
+                .then(response => response.json())
+                .then(data => {
+                    if (!balanceChart) {
+                        console.log('Chart not initialized yet');
+                        return;
+                    }
+
+                    // Add new data point to chart
+                    // 添加新数据点到图表
+                    const timeLabel = data.timestamp.split(' ')[1]; // Extract time part
+                    balanceChart.data.labels.push(timeLabel);
+                    balanceChart.data.datasets[0].data.push(data.total_balance);
+                    balanceChart.data.datasets[1].data.push(data.available_balance);
+                    balanceChart.data.datasets[2].data.push(data.unrealized_pnl);
+
+                    // Keep only last 100 data points to avoid overcrowding
+                    // 只保留最近100个数据点，避免图表过于拥挤
+                    const maxDataPoints = 100;
+                    if (balanceChart.data.labels.length > maxDataPoints) {
+                        balanceChart.data.labels.shift();
+                        balanceChart.data.datasets.forEach(dataset => dataset.data.shift());
+                    }
+
+                    // Update chart
+                    // 更新图表
+                    balanceChart.update();
+
+                    console.log('Balance updated:', data.timestamp, 'Total:', data.total_balance, 'USDT');
+                })
+                .catch(error => {
+                    console.error('更新实时余额失败:', error);
+                });
+        }
+    </script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🤖 加密货币交易机器人 (完整版)</h1>
+            <div class="status-bar">
+                <div class="status-item">
+                    <span class="live-indicator"></span>
+                    <span>实时监控</span>
+                </div>
+                <div class="status-item">
+                    <strong>交易对:</strong>
+                    {{range $i, $symbol := .Symbols}}
+                        <span class="badge badge-info">{{$symbol}}</span>
+                    {{end}}
+                </div>
+                <div class="status-item">
+                    <strong>时间周期:</strong>
+                    <span class="badge badge-info">{{.Timeframe}}</span>
+                </div>
+                <div class="status-item">
+                    <strong>模式:</strong>
+                    {{if .TestMode}}
+                    <span class="badge badge-success">测试模式</span>
+                    {{else}}
+                    <span class="badge badge-danger">实盘模式</span>
+                    {{end}}
+                </div>
+                <div class="status-item">
+                    <strong>自动执行:</strong>
+                    {{if .AutoExecute}}
+                    <span class="badge badge-success">已启用</span>
+                    {{else}}
+                    <span class="badge badge-warning">未启用</span>
+                    {{end}}
+                </div>
+                <div class="status-item">
+                    <strong>杠杆:</strong>
+                    {{if .LeverageDynamic}}
+                    <span class="badge badge-info">{{.LeverageMin}}-{{.LeverageMax}}x (动态)</span>
+                    {{else}}
+                    <span class="badge badge-info">{{.LeverageMin}}x (固定)</span>
+                    {{end}}
+                </div>
+                <div class="status-item">
+                    <strong>LLM:</strong>
+                    {{if .LLMEnabled}}
+                    <span class="badge badge-success">已启用</span>
+                    {{else}}
+                    <span class="badge badge-warning">未启用</span>
+                    {{end}}
+                </div>
+                <div class="status-item">
+                    <strong>更新时间:</strong>
+                    <span>{{.CurrentTime}}</span>
+                </div>
+                <div class="status-item">
+                    <strong>下次交易:</strong>
+                    <span>{{.NextTradeTime}}</span>
+                    <span class="badge badge-success" id="countdown" style="margin-left: 5px;">--:--:--</span>
+                </div>
+            </div>
+        </header>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">总会话数</div>
+                <div class="stat-value">{{index .Stats "total_sessions"}}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">已执行交易</div>
+                <div class="stat-value">{{index .Stats "executed_count"}}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">执行率</div>
+                <div class="stat-value">{{printf "%.1f" (index .Stats "execution_rate")}}%</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">活跃持仓</div>
+                <div class="stat-value">{{len .Positions}}</div>
+            </div>
+        </div>
+
+        <div class="chart-container">
+            <h2>📈 账户余额历史</h2>
+            <div class="chart-wrapper">
+                <canvas id="balanceChart"></canvas>
+            </div>
+        </div>
+
+        {{if .Positions}}
+        <div class="positions-container">
+            <h2>💼 活跃持仓</h2>
+            <div class="position-list">
+                {{range .Positions}}
+                <div class="position-item {{if eq .Side "short"}}short{{end}}">
+                    <div class="position-detail">
+                        <div class="position-detail-label">交易对</div>
+                        <div class="position-detail-value">{{.Symbol}}</div>
+                    </div>
+                    <div class="position-detail">
+                        <div class="position-detail-label">方向</div>
+                        <div class="position-detail-value">
+                            {{if eq .Side "long"}}📈 多头{{else}}📉 空头{{end}}
+                        </div>
+                    </div>
+                    <div class="position-detail">
+                        <div class="position-detail-label">杠杆</div>
+                        <div class="position-detail-value">{{.Leverage}}x</div>
+                    </div>
+                    <div class="position-detail">
+                        <div class="position-detail-label">入场价格</div>
+                        <div class="position-detail-value">${{printf "%.2f" .EntryPrice}}</div>
+                    </div>
+                    <div class="position-detail">
+                        <div class="position-detail-label">当前价格</div>
+                        <div class="position-detail-value">${{printf "%.2f" .CurrentPrice}}</div>
+                    </div>
+                    <div class="position-detail">
+                        <div class="position-detail-label">止损类型</div>
+                        <div class="position-detail-value">
+                            {{if eq .StopLossType "fixed"}}固定止损
+                            {{else if eq .StopLossType "breakeven"}}保本止损
+                            {{else if eq .StopLossType "trailing"}}追踪止损
+                            {{else}}{{.StopLossType}}{{end}}
+                        </div>
+                    </div>
+                    <div class="position-detail">
+                        <div class="position-detail-label">当前止损</div>
+                        <div class="position-detail-value">${{printf "%.2f" .CurrentStopLoss}}</div>
+                    </div>
+                    <div class="position-detail">
+                        <div class="position-detail-label">未实现盈亏</div>
+                        <div class="position-detail-value {{if ge .UnrealizedPnL 0.0}}profit-positive{{else}}profit-negative{{end}}">
+                            {{printf "%+.2f%%" (mul .UnrealizedPnL 100)}}
+                        </div>
+                    </div>
+                </div>
+                {{end}}
+            </div>
+        </div>
+        {{end}}
+
+        <div class="sessions-container">
+            <h2>📊 最近的分析会话</h2>
+            {{if .Sessions}}
+            <div class="session-list">
+                {{range .Sessions}}
+                <div class="session-item">
+                    <div class="session-header">
+                        <span class="session-id">会话 #{{.ID}}</span>
+                        <span class="session-time">{{.CreatedAt.Format "2006-01-02 15:04:05"}}</span>
+                    </div>
+                    <div class="session-main-info">
+                        <div class="session-info">
+                            <strong>交易对:</strong> {{.Symbol}} |
+                            <strong>时间周期:</strong> {{.Timeframe}} |
+                            <strong>已执行:</strong> {{if .Executed}}✅ 是{{else}}⏸ 否{{end}}
+                        </div>
+                        {{if .Decision}}
+                        <div class="session-action">
+                            {{$action := extractAction .Decision}}
+                            {{if eq $action "BUY"}}
+                                <span class="action-badge action-buy">📈 BUY</span>
+                            {{else if eq $action "SELL"}}
+                                <span class="action-badge action-sell">📉 SELL</span>
+                            {{else if eq $action "CLOSE_LONG"}}
+                                <span class="action-badge action-close">🔒 平多</span>
+                            {{else if eq $action "CLOSE_SHORT"}}
+                                <span class="action-badge action-close">🔒 平空</span>
+                            {{else if eq $action "HOLD"}}
+                                <span class="action-badge action-hold">💤 HOLD</span>
+                            {{else}}
+                                <span class="action-badge action-unknown">❓ {{$action}}</span>
+                            {{end}}
+                        </div>
+                        {{end}}
+                    </div>
+                    {{if .Decision}}
+                    <div class="session-decision">
+                        {{.Decision}}
+                    </div>
+                    {{end}}
+                </div>
+                {{end}}
+            </div>
+            {{else}}
+            <div class="no-data">
+                <p>暂无分析会话记录</p>
+                <p style="margin-top: 10px; font-size: 0.9em;">运行主程序后，分析结果将显示在这里</p>
+            </div>
+            {{end}}
+        </div>
+
+        <div class="refresh-info">
+            📊 余额图表每 30 秒自动更新 | ⏱ 页面每 5 分钟刷新 |
+            <a href="/api/positions" style="color: #667eea; text-decoration: none;">API: 持仓</a> |
+            <a href="/api/symbols" style="color: #667eea; text-decoration: none;">API: 交易对</a> |
+            <a href="/api/balance/current" style="color: #667eea; text-decoration: none;">API: 实时余额</a>
+        </div>
+    </div>
+</body>
+</html>
