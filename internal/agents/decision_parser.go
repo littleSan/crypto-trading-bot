@@ -83,11 +83,11 @@ func ParseDecision(decisionText string, symbol string) *TradingDecision {
 func extractAction(text string) string {
 	// First try to extract from decision markers (highest priority)
 	// 首先尝试从决策标记中提取（最高优先级）
-	// Supports Markdown formatting like **交易方向**: BUY
-	// 支持 Markdown 格式如 **交易方向**: BUY
+	// Supports Markdown formatting like **方向**: BUY or **交易方向**: BUY
+	// 支持 Markdown 格式如 **方向**: BUY 或 **交易方向**: BUY
 	decisionPatterns := []string{
-		`\*{0,2}(?:最终决策|决策方向|交易方向)\*{0,2}[：:\s]*([a-z_]+)`,  // **交易方向**: buy
-		`\*{0,2}(?:decision|action)\*{0,2}[：:\s]*([a-z_]+)`, // **action**: sell
+		`\*{0,2}(?:最终决策|决策方向|交易方向|方向)\*{0,2}[：:\s]*([a-z_]+)`,         // **方向**: buy or **交易方向**: buy
+		`\*{0,2}(?:decision|action|direction)\*{0,2}[：:\s]*([a-z_]+)`, // **direction**: sell
 	}
 
 	for _, pattern := range decisionPatterns {
