@@ -315,18 +315,33 @@ func (g *SimpleTradingGraph) BuildGraph(ctx context.Context) (compose.Runnable[m
 				// Funding rate
 				fundingRate, err := marketData.GetFundingRate(ctx, binanceSymbol)
 				if err != nil {
-					reportBuilder.WriteString(fmt.Sprintf("资金费率获取失败: %v\n", err))
+					reportBuilder.WriteString(fmt.Sprintf("资金费率获取失败: %v\n\n", err))
 				} else {
-					reportBuilder.WriteString(fmt.Sprintf("资金费率: %.6f (%.4f%%)\n", fundingRate, fundingRate*100))
+					// Interpret funding rate
+					var frInterpretation string
+					if fundingRate > 0.001 {
+						frInterpretation = "多头过热 ⚠️"
+					} else if fundingRate < -0.001 {
+						frInterpretation = "空头过热 ⚠️"
+					} else if fundingRate > 0 {
+						frInterpretation = "多头略占优"
+					} else if fundingRate < 0 {
+						frInterpretation = "空头略占优"
+					} else {
+						frInterpretation = "中性"
+					}
+					reportBuilder.WriteString(fmt.Sprintf("💰 资金费率: %.6f (%.4f%%) - %s\n\n", fundingRate, fundingRate*100, frInterpretation))
 				}
 
-				// Order book
+				// Order book - use enhanced format
 				orderBook, err := marketData.GetOrderBook(ctx, binanceSymbol, 20)
 				if err != nil {
-					reportBuilder.WriteString(fmt.Sprintf("订单簿获取失败: %v\n", err))
+					reportBuilder.WriteString(fmt.Sprintf("订单簿获取失败: %v\n\n", err))
 				} else {
-					reportBuilder.WriteString(fmt.Sprintf("订单簿 - 买单量: %.2f, 卖单量: %.2f, 买卖比: %.2f\n",
-						orderBook["bid_volume"], orderBook["ask_volume"], orderBook["bid_ask_ratio"]))
+					// Use the new formatted order book report
+					orderBookReport := dataflows.FormatOrderBookReport(orderBook, 10)
+					reportBuilder.WriteString(orderBookReport)
+					reportBuilder.WriteString("\n")
 				}
 
 				// 24h stats
@@ -354,11 +369,31 @@ func (g *SimpleTradingGraph) BuildGraph(ctx context.Context) (compose.Runnable[m
 	// Sentiment Analyst Lambda - Fetches market sentiment for all symbols
 	// Sentiment Analyst Lambda - 为所有交易对获取市场情绪
 	sentimentAnalyst := compose.InvokableLambda(func(ctx context.Context, input map[string]any) (map[string]any, error) {
+		results := make(map[string]any)
+
+		// Check if sentiment analysis is enabled
+		// 检查是否启用情绪分析
+		if !g.config.EnableSentimentAnalysis {
+			g.logger.Info("ℹ️  市场情绪分析已禁用（ENABLE_SENTIMENT_ANALYSIS=false）")
+			// Set empty sentiment reports for all symbols
+			// 为所有交易对设置空的情绪报告
+			for _, symbol := range g.state.Symbols {
+				emptyReport := `
+# 市场情绪分析（已禁用）
+
+⚠️ 市场情绪分析功能已禁用
+说明: 系统配置中禁用了情绪分析（ENABLE_SENTIMENT_ANALYSIS=false）
+建议: 如需启用，请在 .env 中设置 ENABLE_SENTIMENT_ANALYSIS=true
+`
+				g.state.SetSentimentReport(symbol, emptyReport)
+			}
+			return results, nil
+		}
+
 		g.logger.Info("🔍 情绪分析师：正在获取所有交易对的市场情绪...")
 
 		// 并行分析所有交易对 / Analyze all symbols in parallel
 		var wg sync.WaitGroup
-		results := make(map[string]any)
 
 		for _, symbol := range g.state.Symbols {
 			wg.Add(1)

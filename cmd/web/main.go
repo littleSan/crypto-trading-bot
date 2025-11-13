@@ -174,12 +174,17 @@ func main() {
 		}
 	}
 
-	// Start real-time position monitoring in background
-	// 在后台启动实时持仓监控
-	go func() {
-		log.Success("🔍 启动持仓监控，间隔: 10 秒")
-		globalStopLossManager.MonitorPositions(10 * time.Second)
-	}()
+	// Note: Local monitoring disabled - relying on Binance server-side stop-loss orders
+	// 注意：已禁用本地监控 - 完全依赖币安服务器端止损单
+	// 原因：
+	//   1. 币安止损单 24/7 服务器端监控，触发速度更快（毫秒级）
+	//   2. 避免本地监控与币安止损单重复执行
+	//   3. 减少 API 调用开销
+	//   4. 即使本地程序崩溃，币安止损单仍会执行
+	// go func() {
+	// 	log.Success("🔍 启动持仓监控，间隔: 10 秒")
+	// 	globalStopLossManager.MonitorPositions(10 * time.Second)
+	// }()
 
 	// Start balance history recording in background
 	// 在后台启动余额历史记录
@@ -333,13 +338,36 @@ func runTradingAnalysis(ctx context.Context, cfg *config.Config, log *logger.Col
 		}
 	}
 
-	// Save session to database for each symbol
-	// 为每个交易对保存分析结果到数据库
+	// Save session to database for each symbol with symbol-specific decision
+	// 为每个交易对保存分析结果到数据库，包含该交易对的专属决策
 	log.Subheader("保存分析结果", '─', 80)
+
+	// Parse multi-currency decision to extract symbol-specific decisions
+	// 解析多币种决策以提取每个交易对的专属决策
+	symbolDecisions := agents.ParseMultiCurrencyDecision(decision, cfg.CryptoSymbols)
+
 	for _, symbol := range cfg.CryptoSymbols {
 		reports := state.GetSymbolReports(symbol)
 		if reports == nil {
 			continue
+		}
+
+		// Get symbol-specific decision text
+		// 获取该交易对的专属决策文本
+		symbolDecision := decision // Default to full decision
+		if parsedDecision, ok := symbolDecisions[symbol]; ok && parsedDecision.Valid {
+			// Format symbol-specific decision for display
+			// 格式化该交易对的专属决策用于显示
+			symbolDecision = fmt.Sprintf(`【%s】
+**交易方向**: %s
+**置信度**: %.2f
+**杠杆倍数**: %d倍
+**理由**: %s`,
+				symbol,
+				parsedDecision.Action,
+				parsedDecision.Confidence,
+				parsedDecision.Leverage,
+				parsedDecision.Reason)
 		}
 
 		session := &storage.TradingSession{
@@ -350,7 +378,7 @@ func runTradingAnalysis(ctx context.Context, cfg *config.Config, log *logger.Col
 			CryptoReport:    reports.CryptoReport,
 			SentimentReport: reports.SentimentReport,
 			PositionInfo:    reports.PositionInfo,
-			Decision:        decision,
+			Decision:        symbolDecision, // ✅ Symbol-specific decision instead of full text
 			Executed:        false,
 			ExecutionResult: "",
 		}
@@ -413,11 +441,25 @@ func runTradingAnalysis(ctx context.Context, cfg *config.Config, log *logger.Col
 			log.Info(fmt.Sprintf("置信度: %.2f", symbolDecision.Confidence))
 			log.Info(fmt.Sprintf("理由: %s", symbolDecision.Reason))
 
-			// Skip HOLD actions
-			// 跳过 HOLD 动作
+			// Handle HOLD actions
+			// 处理 HOLD 动作
 			if symbolDecision.Action == executors.ActionHold {
 				log.Info("💤 观望决策，不执行交易")
-				executionResults[symbol] = "观望，不执行交易"
+
+				// Update stop-loss if LLM provides new stop-loss price
+				// 如果 LLM 提供了新的止损价格，则更新止损
+				if symbolDecision.StopLoss > 0 {
+					err := globalStopLossManager.UpdateStopLoss(ctx, symbol, symbolDecision.StopLoss, symbolDecision.Reason)
+					if err != nil {
+						log.Warning(fmt.Sprintf("⚠️  更新 %s 止损失败: %v", symbol, err))
+						executionResults[symbol] = fmt.Sprintf("观望，更新止损失败: %v", err)
+					} else {
+						log.Success(fmt.Sprintf("✅ %s 止损已更新至: %.2f", symbol, symbolDecision.StopLoss))
+						executionResults[symbol] = fmt.Sprintf("观望，止损已更新至: %.2f", symbolDecision.StopLoss)
+					}
+				} else {
+					executionResults[symbol] = "观望，不执行交易"
+				}
 				continue
 			}
 
@@ -444,7 +486,14 @@ func runTradingAnalysis(ctx context.Context, cfg *config.Config, log *logger.Col
 
 			// Execute the trade using coordinator
 			// 使用协调器执行交易
-			result, err := coordinator.ExecuteDecision(ctx, symbol, symbolDecision.Action, symbolDecision.Reason)
+			result, err := coordinator.ExecuteDecisionWithParams(
+				ctx,
+				symbol,
+				symbolDecision.Action,
+				symbolDecision.Reason,
+				symbolDecision.Leverage,
+				symbolDecision.PositionSizePercent,
+			)
 			if err != nil {
 				log.Error(fmt.Sprintf("❌ %s 交易执行失败: %v", symbol, err))
 				executionResults[symbol] = fmt.Sprintf("执行失败: %v", err)

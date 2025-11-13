@@ -8,16 +8,19 @@ import (
 	"github.com/oak/crypto-trading-bot/internal/executors"
 )
 
+// todo 指定大模型以 json 模式输出 或者 用小模型读取大模型输出，然后结构化输出 json
+
 // TradingDecision represents a parsed trading decision from LLM
 // TradingDecision 表示从 LLM 解析出的交易决策
 type TradingDecision struct {
-	Action     executors.TradeAction // 交易动作 / Trading action
-	Confidence float64               // 置信度 0-1 / Confidence level 0-1
-	Leverage   int                   // 杠杆倍数 / Leverage multiplier
-	Reason     string                // 决策理由 / Decision reason
-	Symbol     string                // 交易对 / Trading pair
-	StopLoss   float64               // 止损价格 / Stop-loss price
-	Valid      bool                  // 决策是否有效 / Whether decision is valid
+	Action              executors.TradeAction // 交易动作 / Trading action
+	Confidence          float64               // 置信度 0-1 / Confidence level 0-1
+	Leverage            int                   // 杠杆倍数 / Leverage multiplier
+	Reason              string                // 决策理由 / Decision reason
+	Symbol              string                // 交易对 / Trading pair
+	StopLoss            float64               // 止损价格 / Stop-loss price
+	PositionSizePercent float64               // 仓位百分比 0-100 / Position size percentage (e.g., 40 = 40%)
+	Valid               bool                  // 决策是否有效 / Whether decision is valid
 }
 
 // ParseDecision parses LLM decision text and extracts trading action
@@ -60,9 +63,13 @@ func ParseDecision(decisionText string, symbol string) *TradingDecision {
 	// 提取止损价格（新功能）
 	decision.StopLoss = extractStopLoss(text)
 
-	// Extract reason
-	// 提取理由
-	decision.Reason = extractReason(decisionText)
+	// Extract position size percentage (NEW!)
+	// 提取仓位百分比（新功能）
+	decision.PositionSizePercent = extractPositionSizePercent(text)
+
+	// Extract reason (pass lowercase text for consistency)
+	// 提取理由（传入小写文本以保持一致性）
+	decision.Reason = extractReason(text)
 
 	// Mark as valid
 	// 标记为有效
@@ -76,16 +83,18 @@ func ParseDecision(decisionText string, symbol string) *TradingDecision {
 func extractAction(text string) string {
 	// First try to extract from decision markers (highest priority)
 	// 首先尝试从决策标记中提取（最高优先级）
+	// Supports Markdown formatting like **交易方向**: BUY
+	// 支持 Markdown 格式如 **交易方向**: BUY
 	decisionPatterns := []string{
-		`(?:最终决策|决策方向|交易方向)[：:*\s]*\*?\*?([A-Z_]+)`,
-		`(?:decision|action)[：:*\s]*\*?\*?([A-Z_]+)`,
+		`\*{0,2}(?:最终决策|决策方向|交易方向)\*{0,2}[：:\s]*([a-z_]+)`,  // **交易方向**: buy
+		`\*{0,2}(?:decision|action)\*{0,2}[：:\s]*([a-z_]+)`, // **action**: sell
 	}
 
 	for _, pattern := range decisionPatterns {
 		re := regexp.MustCompile(pattern)
 		matches := re.FindStringSubmatch(text)
 		if len(matches) > 1 {
-			action := strings.ToLower(strings.TrimSpace(matches[1]))
+			action := strings.TrimSpace(matches[1]) // Already lowercase, no need to convert again
 			return action
 		}
 	}
@@ -178,12 +187,12 @@ func mapToTradeAction(action string) executors.TradeAction {
 // extractConfidence extracts confidence level from text
 // extractConfidence 从文本中提取置信度
 func extractConfidence(text string) float64 {
-	// Look for confidence patterns like "置信度: 0.8" or "confidence: 80%"
-	// 查找置信度模式，如 "置信度: 0.8" 或 "confidence: 80%"
+	// Look for confidence patterns like "置信度: 0.8" or "confidence: 80%" or "信心: 78.5%"
+	// 查找置信度模式，如 "置信度: 0.8" 或 "confidence: 80%" 或 "信心: 78.5%"
 	patterns := []string{
-		`置信度[：:]\s*([0-9.]+)`,
-		`confidence[：:]\s*([0-9.]+)`,
-		`信心[：:]\s*([0-9]+)%`,
+		`\*{0,2}置信度\*{0,2}[：:\s]*([0-9.]+)`,        // 置信度: 0.78 or **置信度**: 0.78
+		`\*{0,2}confidence\*{0,2}[：:\s]*([0-9.]+)`, // confidence: 0.8 or **confidence**: 0.8
+		`\*{0,2}信心\*{0,2}[：:\s]*([0-9.]+)%?`,       // 信心: 78% or 信心: 78.5% or **信心**: 78%
 	}
 
 	for _, pattern := range patterns {
@@ -207,14 +216,14 @@ func extractConfidence(text string) float64 {
 // extractLeverage extracts leverage multiplier from text
 // extractLeverage 从文本中提取杠杆倍数
 func extractLeverage(text string) int {
-	// Look for leverage patterns like "杠杆倍数: 15" or "leverage: 15x"
-	// 查找杠杆模式，如 "杠杆倍数: 15" 或 "leverage: 15x"
+	// Look for leverage patterns like "杠杆倍数: 15" or "leverage: 15x" or "12倍"
+	// 查找杠杆模式，如 "杠杆倍数: 15" 或 "leverage: 15x" 或 "12倍"
 	patterns := []string{
-		`杠杆倍数[：:]\s*([0-9]+)`,
-		`杠杆[：:]\s*([0-9]+)`,
-		`leverage[：:]\s*([0-9]+)`,
-		`([0-9]+)倍杠杆`,
-		`([0-9]+)x\s+leverage`,
+		`杠杆倍数[：:\s]*\*{0,2}\s*([0-9]+)`,       // 杠杆倍数: 15 or **杠杆倍数**: 12
+		`杠杆[：:\s]*\*{0,2}\s*([0-9]+)`,         // 杠杆: 10
+		`leverage[：:\s]*\*{0,2}\s*([0-9]+)x?`, // leverage: 15 or leverage: 15x
+		`([0-9]+)倍(?:杠杆)?`,                    // 12倍 or 12倍杠杆
+		`([0-9]+)x(?:\s*leverage)?`,           // 15x or 15x leverage or 15xleverage
 	}
 
 	for _, pattern := range patterns {
@@ -237,14 +246,14 @@ func extractLeverage(text string) int {
 // extractStopLoss extracts stop-loss price from text
 // extractStopLoss 从文本中提取止损价格
 func extractStopLoss(text string) float64 {
-	// Look for stop-loss patterns (supports Markdown formatting like **)
-	// 查找止损模式（支持 Markdown 格式如 **）
+	// Look for stop-loss patterns (supports Markdown formatting like ** and various price formats)
+	// 查找止损模式（支持 Markdown 格式如 ** 和各种价格格式）
 	patterns := []string{
-		`\*?\*?止损[价格价位]*\*?\*?[：:]\s*\$?([0-9,.]+)`,
-		`\*?\*?初始止损\*?\*?[：:]\s*\$?([0-9,.]+)`,
-		`\*?\*?stop[-\s]?loss\*?\*?[：:]\s*\$?([0-9,.]+)`,
-		`\*?\*?止损价\*?\*?[：:]\s*\$?([0-9,.]+)`,
-		`\*?\*?止损点\*?\*?[：:]\s*\$?([0-9,.]+)`,
+		`\*{0,2}止损[价格价位]*\*{0,2}[：:\s]*\$?\s*([0-9,.]+)`,      // 止损: $154.50 or **止损**: 154.50
+		`\*{0,2}初始止损\*{0,2}[：:\s]*\$?\s*([0-9,.]+)`,           // **初始止损**: $154.50
+		`\*{0,2}stop[-\s]?loss\*{0,2}[：:\s]*\$?\s*([0-9,.]+)`, // stop-loss: $100
+		`\*{0,2}止损价\*{0,2}[：:\s]*\$?\s*([0-9,.]+)`,            // 止损价: 154.50
+		`\*{0,2}止损点\*{0,2}[：:\s]*\$?\s*([0-9,.]+)`,            // 止损点: 154.50
 	}
 
 	for _, pattern := range patterns {
@@ -270,19 +279,24 @@ func extractStopLoss(text string) float64 {
 // extractReason extracts the decision reason from text
 // extractReason 从文本中提取决策理由
 func extractReason(text string) string {
-	// Look for reason patterns
-	// 查找理由模式
+	// Look for reason patterns (now using case-insensitive matching)
+	// 查找理由模式（现在使用不区分大小写匹配）
 	patterns := []string{
-		`理由[：:]\s*(.+?)(?:\n|$)`,
-		`原因[：:]\s*(.+?)(?:\n|$)`,
-		`reason[：:]\s*(.+?)(?:\n|$)`,
+		`(?i)\*{0,2}理由\*{0,2}[：:\s]*(.+?)(?:\n|$)`,     // 理由: xxx or **理由**: xxx
+		`(?i)\*{0,2}原因\*{0,2}[：:\s]*(.+?)(?:\n|$)`,     // 原因: xxx
+		`(?i)\*{0,2}入场理由\*{0,2}[：:\s]*(.+?)(?:\n|$)`,   // **入场理由**: xxx
+		`(?i)\*{0,2}reason\*{0,2}[：:\s]*(.+?)(?:\n|$)`, // reason: xxx or REASON: xxx
 	}
 
 	for _, pattern := range patterns {
 		re := regexp.MustCompile(pattern)
 		matches := re.FindStringSubmatch(text)
 		if len(matches) > 1 {
-			return strings.TrimSpace(matches[1])
+			reason := strings.TrimSpace(matches[1])
+			// Remove trailing Markdown symbols
+			// 移除末尾的 Markdown 符号
+			reason = strings.TrimRight(reason, "*")
+			return reason
 		}
 	}
 
@@ -291,7 +305,13 @@ func extractReason(text string) string {
 	lines := strings.Split(text, "\n")
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
-		if len(line) > 20 && !strings.HasPrefix(line, "#") {
+		// Skip headers (starting with #) and very short lines
+		// 跳过标题（以 # 开头）和很短的行
+		if len(line) > 30 && !strings.HasPrefix(line, "#") && !strings.HasPrefix(line, "**交易方向") {
+			// Remove Markdown formatting
+			// 移除 Markdown 格式
+			line = strings.ReplaceAll(line, "**", "")
+			line = strings.TrimSpace(line)
 			return line
 		}
 	}
@@ -337,6 +357,10 @@ func ValidateDecision(decision *TradingDecision, currentPosition *executors.Posi
 func ParseMultiCurrencyDecision(decisionText string, symbols []string) map[string]*TradingDecision {
 	decisions := make(map[string]*TradingDecision)
 
+	// Extract only the "最终决策" section to avoid parsing analysis text
+	// 只提取"最终决策"部分以避免解析分析文本
+	finalDecisionSection := extractFinalDecisionSection(decisionText)
+
 	// Try to find decision blocks for each symbol
 	// 尝试为每个交易对找到决策块
 	for _, symbol := range symbols {
@@ -354,15 +378,15 @@ func ParseMultiCurrencyDecision(decisionText string, symbols []string) map[strin
 		patterns := []string{
 			fmt.Sprintf(`(?si)【%s】(.{0,1000}?)(?:【|$)`, symbolLower),
 			fmt.Sprintf(`(?si)【%s】(.{0,1000}?)(?:【|$)`, baseSymbol),
-			fmt.Sprintf(`(?si)%s(.{0,1000}?)(?:\n\n|$)`, symbolLower),
+			fmt.Sprintf(`(?si)\*{0,2}%s\*{0,2}(.{0,1000}?)(?:\n\n|$)`, symbolLower), // Match **BTC/USDT** or BTC/USDT
 		}
 
 		var blockText string
 		for _, pattern := range patterns {
 			re := regexp.MustCompile(pattern)
-			// Search in original text to preserve case for action extraction
-			// 在原始文本中搜索以保留大小写用于提取动作
-			matches := re.FindStringSubmatch(decisionText)
+			// Search in final decision section only, not in analysis section
+			// 只在最终决策部分搜索，不在分析部分搜索
+			matches := re.FindStringSubmatch(finalDecisionSection)
 			if len(matches) > 1 {
 				blockText = matches[1]
 				break
@@ -388,6 +412,64 @@ func ParseMultiCurrencyDecision(decisionText string, symbols []string) map[strin
 	}
 
 	return decisions
+}
+
+// extractFinalDecisionSection extracts only the final decision section from LLM output
+// extractFinalDecisionSection 从 LLM 输出中只提取最终决策部分
+func extractFinalDecisionSection(text string) string {
+	// Look for section headers that indicate final decisions
+	// 查找表示最终决策的章节标题
+	patterns := []string{
+		`(?si)##\s*最终决策[：:\s]*(.*)`,             // ## 最终决策：
+		`(?si)##\s*交易决策[：:\s]*(.*)`,             // ## 交易决策：
+		`(?si)##\s*final\s*decision[：:\s]*(.*)`, // ## Final Decision:
+		`(?si)##\s*决策[：:\s]*(.*)`,               // ## 决策：
+	}
+
+	for _, pattern := range patterns {
+		re := regexp.MustCompile(pattern)
+		matches := re.FindStringSubmatch(text)
+		if len(matches) > 1 {
+			return matches[1] // Return everything after the header
+		}
+	}
+
+	// If no section found, return full text (backward compatibility)
+	// 如果未找到章节，返回完整文本（向后兼容）
+	return text
+}
+
+// extractPositionSizePercent extracts position size percentage from text
+// extractPositionSizePercent 从文本中提取仓位百分比
+func extractPositionSizePercent(text string) float64 {
+	// Look for position size patterns like "仓位建议: 40%资金" or "position: 30%"
+	// 查找仓位模式，如 "仓位建议: 40%资金" 或 "position: 30%"
+	patterns := []string{
+		`\*{0,2}仓位建议\*{0,2}[：:\s]*([0-9.]+)%`,            // 仓位建议: 40% or **仓位建议**: 40%资金
+		`\*{0,2}建议仓位\*{0,2}[：:\s]*([0-9.]+)%`,            // 建议仓位: 30%
+		`\*{0,2}position\s*size\*{0,2}[：:\s]*([0-9.]+)%`, // position size: 25%
+		`使用\s*([0-9.]+)%\s*(?:的)?资金`,                     // 使用 40% 资金 or 使用 40% 的资金
+		`([0-9.]+)%\s*资金`,                                // 40%资金
+	}
+
+	for _, pattern := range patterns {
+		re := regexp.MustCompile(pattern)
+		matches := re.FindStringSubmatch(text)
+		if len(matches) > 1 {
+			var percent float64
+			if _, err := fmt.Sscanf(matches[1], "%f", &percent); err == nil {
+				// Validate range (0-100)
+				// 验证范围（0-100）
+				if percent > 0 && percent <= 100 {
+					return percent
+				}
+			}
+		}
+	}
+
+	// If no position size found, return 0 (will use config default)
+	// 如果未找到仓位建议，返回 0（将使用配置默认值）
+	return 0
 }
 
 // ValidateLeverage validates and returns the appropriate leverage to use

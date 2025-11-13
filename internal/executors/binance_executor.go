@@ -660,6 +660,53 @@ func (e *BinanceExecutor) GetAccountInfo(ctx context.Context) (*futures.Account,
 	return e.client.NewGetAccountService().Do(ctx)
 }
 
+// GetBalance returns the available USDT balance
+// GetBalance 返回可用的 USDT 余额
+func (e *BinanceExecutor) GetBalance(ctx context.Context) (float64, error) {
+	account, err := e.GetAccountInfo(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get account info: %w", err)
+	}
+
+	// Find USDT balance
+	// 查找 USDT 余额
+	for _, asset := range account.Assets {
+		if asset.Asset == "USDT" {
+			balance, err := parseFloat(asset.AvailableBalance)
+			if err != nil {
+				return 0, fmt.Errorf("failed to parse balance: %w", err)
+			}
+			return balance, nil
+		}
+	}
+
+	return 0, fmt.Errorf("USDT balance not found")
+}
+
+// GetCurrentPrice returns the current market price for a symbol
+// GetCurrentPrice 返回交易对的当前市场价格
+func (e *BinanceExecutor) GetCurrentPrice(ctx context.Context, symbol string) (float64, error) {
+	binanceSymbol := strings.ReplaceAll(symbol, "/", "")
+
+	// Get latest price from ticker
+	// 从行情数据获取最新价格
+	prices, err := e.client.NewListPricesService().Symbol(binanceSymbol).Do(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get price: %w", err)
+	}
+
+	if len(prices) == 0 {
+		return 0, fmt.Errorf("no price data for %s", symbol)
+	}
+
+	price, err := parseFloat(prices[0].Price)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse price: %w", err)
+	}
+
+	return price, nil
+}
+
 // Helper functions
 func parseFloat(s string) (float64, error) {
 	var f float64
@@ -787,4 +834,71 @@ func (p *Position) GetStopLossHistoryString() string {
 			event.Trigger)
 	}
 	return result
+}
+
+// AdjustQuantityPrecision adjusts quantity to match symbol's precision requirements
+// AdjustQuantityPrecision 调整数量以符合交易对的精度要求
+func AdjustQuantityPrecision(symbol string, quantity float64) (float64, error) {
+	// Get precision and min quantity for the symbol
+	// 获取交易对的精度和最小数量要求
+	precision, minQty := getSymbolPrecision(symbol)
+
+	// Round to the required precision
+	// 四舍五入到所需精度
+	multiplier := math.Pow(10, float64(precision))
+	adjusted := math.Round(quantity*multiplier) / multiplier
+
+	// Ensure it meets minimum quantity
+	// 确保满足最小数量要求
+	if adjusted < minQty {
+		return 0, fmt.Errorf("数量 %.4f 低于最小要求 %.4f (交易对: %s)", adjusted, minQty, symbol)
+	}
+
+	return adjusted, nil
+}
+
+// getSymbolPrecision returns the quantity precision and minimum quantity for a symbol
+// getSymbolPrecision 返回交易对的数量精度和最小数量
+func getSymbolPrecision(symbol string) (precision int, minQty float64) {
+	// Default values
+	// 默认值
+	precision = 2
+	minQty = 0.01
+
+	// Symbol-specific configurations (based on Binance futures)
+	// 特定交易对的配置（基于币安期货）
+	switch strings.ToUpper(symbol) {
+	case "BTCUSDT", "BTC/USDT":
+		precision = 3 // 0.001 BTC
+		minQty = 0.001
+	case "ETHUSDT", "ETH/USDT":
+		precision = 3 // 0.001 ETH
+		minQty = 0.001
+	case "SOLUSDT", "SOL/USDT":
+		precision = 2 // 0.01 SOL (2025-04-02 更新)
+		minQty = 0.01
+	case "BNBUSDT", "BNB/USDT":
+		precision = 2 // 0.01 BNB
+		minQty = 0.001
+	case "XRPUSDT", "XRP/USDT":
+		precision = 1 // 0.1 XRP
+		minQty = 0.1
+	case "ADAUSDT", "ADA/USDT":
+		precision = 0 // 1 ADA
+		minQty = 1.0
+	case "DOGEUSDT", "DOGE/USDT":
+		precision = 0 // 1 DOGE
+		minQty = 1.0
+	case "DOTUSDT", "DOT/USDT":
+		precision = 1 // 0.1 DOT
+		minQty = 0.1
+	case "MATICUSDT", "MATIC/USDT":
+		precision = 0 // 1 MATIC
+		minQty = 1.0
+	case "AVAXUSDT", "AVAX/USDT":
+		precision = 2 // 0.01 AVAX
+		minQty = 0.1
+	}
+
+	return precision, minQty
 }

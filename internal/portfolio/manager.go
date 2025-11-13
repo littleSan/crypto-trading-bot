@@ -237,3 +237,12 @@ func (pm *PortfolioManager) GetPositionCount() int {
 	}
 	return count
 }
+
+// GetPosition returns the position for a specific symbol
+// GetPosition 返回特定交易对的持仓信息
+func (pm *PortfolioManager) GetPosition(symbol string) *executors.Position {
+	if posInfo, ok := pm.positions[symbol]; ok {
+		return posInfo.Position
+	}
+	return nil
+}
