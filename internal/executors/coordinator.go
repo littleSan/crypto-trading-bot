@@ -83,9 +83,22 @@ func (tc *TradeCoordinator) ExecuteDecisionWithParams(ctx context.Context, symbo
 	}
 	tc.logger.Success("✅ 动作验证通过")
 
-	// Step 4: Calculate position size
-	// 步骤 4: 计算仓位大小
-	tc.logger.Info("\n[步骤 4/5] 计算仓位大小...")
+	// Step 4: Update leverage if LLM provided recommendation
+	// 步骤 4: 如果 LLM 提供了杠杆建议，更新杠杆设置
+	if leverage > 0 {
+		tc.logger.Info(fmt.Sprintf("\n[步骤 4/7] 更新杠杆设置为 %dx...", leverage))
+		if err := tc.executor.SetupExchange(ctx, symbol, leverage); err != nil {
+			tc.logger.Warning(fmt.Sprintf("⚠️  更新杠杆失败: %v，使用当前杠杆继续", err))
+		} else {
+			tc.logger.Success(fmt.Sprintf("✅ 杠杆已更新为 %dx", leverage))
+		}
+	} else {
+		tc.logger.Info(fmt.Sprintf("\n[步骤 4/7] 使用配置默认杠杆 %dx", tc.config.BinanceLeverage))
+	}
+
+	// Step 5: Calculate position size
+	// 步骤 5: 计算仓位大小
+	tc.logger.Info("\n[步骤 5/7] 计算仓位大小...")
 	positionSize, err := tc.calculatePositionSize(ctx, symbol, action, currentPosition, leverage, positionSizePercent)
 	if err != nil {
 		tc.logger.Error(fmt.Sprintf("❌ 仓位计算失败: %v", err))
@@ -93,9 +106,9 @@ func (tc *TradeCoordinator) ExecuteDecisionWithParams(ctx context.Context, symbo
 	}
 	tc.logger.Info(fmt.Sprintf("仓位大小: %.4f", positionSize))
 
-	// Step 5: Execute the trade
-	// 步骤 5: 执行交易
-	tc.logger.Info("\n[步骤 5/5] 执行交易...")
+	// Step 6: Execute the trade
+	// 步骤 6: 执行交易
+	tc.logger.Info("\n[步骤 6/7] 执行交易...")
 
 	if action == ActionHold {
 		tc.logger.Info("💤 观望决策，不执行交易")
@@ -113,9 +126,9 @@ func (tc *TradeCoordinator) ExecuteDecisionWithParams(ctx context.Context, symbo
 
 	result := tc.executor.ExecuteTrade(ctx, symbol, action, positionSize, reason)
 
-	// Step 6: Post-execution verification
-	// 步骤 6: 执行后验证
-	tc.logger.Info("\n[步骤 6/6] 执行后验证...")
+	// Step 7: Post-execution verification
+	// 步骤 7: 执行后验证
+	tc.logger.Info("\n[步骤 7/7] 执行后验证...")
 	if result.Success {
 		if err := tc.postExecutionVerification(ctx, symbol, action, result); err != nil {
 			tc.logger.Warning(fmt.Sprintf("⚠️  执行后验证发现问题: %v", err))
@@ -242,20 +255,27 @@ func (tc *TradeCoordinator) calculatePositionSize(ctx context.Context, symbol st
 		return 0, fmt.Errorf("获取当前价格失败: %w", err)
 	}
 
+	// Use LLM leverage if provided, otherwise use config default
+	// 如果 LLM 提供了杠杆建议则使用，否则使用配置默认值
+	actualLeverage := llmLeverage
+	if actualLeverage <= 0 {
+		actualLeverage = tc.config.BinanceLeverage
+	}
+
 	// Calculate position size based on percentage and leverage
 	// 根据百分比和杠杆倍数计算仓位大小
 	// Formula: (Balance × Percentage% × Leverage) / Price = Quantity
 	// 公式：(余额 × 百分比% × 杠杆倍数) / 价格 = 数量
 	fundsToUse := balance * (positionSizePercent / 100.0)
-	leveragedFunds := fundsToUse * float64(llmLeverage)
+	leveragedFunds := fundsToUse * float64(actualLeverage)
 	rawSize := leveragedFunds / currentPrice
 
 	tc.logger.Info(fmt.Sprintf("💰 账户余额: %.2f USDT", balance))
 	tc.logger.Info(fmt.Sprintf("📊 LLM 建议: %.1f%% 资金 = %.2f USDT (保证金)", positionSizePercent, fundsToUse))
-	tc.logger.Info(fmt.Sprintf("⚡ 杠杆倍数: %dx", llmLeverage))
+	tc.logger.Info(fmt.Sprintf("⚡ 杠杆倍数: %dx", actualLeverage))
 	tc.logger.Info(fmt.Sprintf("💵 当前价格: $%.2f", currentPrice))
 	tc.logger.Info(fmt.Sprintf("📐 计算数量: %.2f USDT × %d倍 / $%.2f = %.4f %s",
-		fundsToUse, llmLeverage, currentPrice, rawSize, symbol))
+		fundsToUse, actualLeverage, currentPrice, rawSize, symbol))
 
 	// Adjust quantity to meet symbol's precision and minimum quantity requirements
 	// 调整数量以符合交易对的精度和最小数量要求

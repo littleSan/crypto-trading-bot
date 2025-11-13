@@ -215,11 +215,14 @@
             border-radius: 8px;
             border-left: 4px solid #667eea;
             transition: all 0.2s;
+            cursor: pointer;
+            position: relative;
         }
 
         .session-item:hover {
             background: #f3f4f6;
             border-left-color: #764ba2;
+            transform: translateX(5px);
         }
 
         .session-header {
@@ -305,6 +308,24 @@
             max-height: 100px;
             overflow: hidden;
             text-overflow: ellipsis;
+        }
+
+        .view-detail-btn {
+            display: inline-block;
+            margin-top: 10px;
+            padding: 8px 16px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            font-size: 0.85em;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .view-detail-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
         }
 
         .no-data {
@@ -697,7 +718,7 @@
             {{if .Sessions}}
             <div class="session-list">
                 {{range .Sessions}}
-                <div class="session-item">
+                <div class="session-item" onclick="window.location.href='/session/{{.ID}}'">
                     <div class="session-header">
                         <span class="session-id">会话 #{{.ID}}</span>
                         <span class="session-time">{{.CreatedAt.Format "2006-01-02 15:04:05"}}</span>
@@ -732,6 +753,9 @@
                         {{.Decision}}
                     </div>
                     {{end}}
+                    <a href="/session/{{.ID}}" class="view-detail-btn" onclick="event.stopPropagation()">
+                        📋 查看详情
+                    </a>
                 </div>
                 {{end}}
             </div>
