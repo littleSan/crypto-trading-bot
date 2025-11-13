@@ -568,10 +568,32 @@ func (e *BinanceExecutor) GetPositionSummary(ctx context.Context, symbol string)
 		}
 	}
 
+	// Calculate used margin and usage rate
+	// 计算已用保证金和资金使用率
+	usedMargin := usdtTotal - usdtFree
+	usageRate := 0.0
+	if usdtTotal > 0 {
+		usageRate = (usedMargin / usdtTotal) * 100
+	}
+
+	// Determine risk level based on usage rate
+	// 根据资金使用率确定风险等级
+	riskLevel := ""
+	if usageRate < 30 {
+		riskLevel = "✅ 安全"
+	} else if usageRate < 50 {
+		riskLevel = "⚠️ 谨慎"
+	} else if usageRate < 70 {
+		riskLevel = "🚨 警戒"
+	} else {
+		riskLevel = "❌ 危险"
+	}
+
 	summary.WriteString("**账户信息**:\n")
-	summary.WriteString(fmt.Sprintf("- 可用余额: %.2f USDT\n", usdtFree))
 	summary.WriteString(fmt.Sprintf("- 总余额: %.2f USDT\n", usdtTotal))
-	summary.WriteString(fmt.Sprintf("- 已使用保证金: %.2f USDT\n\n", usdtTotal-usdtFree))
+	summary.WriteString(fmt.Sprintf("- 可用余额: %.2f USDT\n", usdtFree))
+	summary.WriteString(fmt.Sprintf("- 已用保证金: %.2f USDT\n", usedMargin))
+	summary.WriteString(fmt.Sprintf("- 资金使用率: %.1f%% %s\n", usageRate, riskLevel))
 
 	// Get position
 	position, _ := e.GetCurrentPosition(ctx, symbol)
@@ -588,13 +610,19 @@ func (e *BinanceExecutor) GetPositionSummary(ctx context.Context, symbol string)
 			currentPrice, _ = parseFloat(ticker[0].LastPrice)
 		}
 
-		// Calculate PnL percentage
+		// Calculate ROE (Return on Equity) using Binance official formula
+		// 使用币安官方公式计算 ROE（回报率）
+		// ROE = 未实现盈亏 / 初始保证金
+		// ROE = UnrealizedPnL / InitialMargin
 		pnlPct := 0.0
-		if position.EntryPrice > 0 {
-			if position.Side == "long" {
-				pnlPct = ((currentPrice - position.EntryPrice) / position.EntryPrice) * 100
-			} else {
-				pnlPct = ((position.EntryPrice - currentPrice) / position.EntryPrice) * 100
+		if position.EntryPrice > 0 && position.Size > 0 && position.Leverage > 0 {
+			// 初始保证金 = (开仓价格 × 数量) / 杠杆
+			// InitialMargin = (EntryPrice × Quantity) / Leverage
+			initialMargin := (position.EntryPrice * position.Size) / float64(position.Leverage)
+			if initialMargin > 0 {
+				// ROE = (未实现盈亏 / 初始保证金) × 100%
+				// ROE = (UnrealizedPnL / InitialMargin) × 100%
+				pnlPct = (position.UnrealizedPnL / initialMargin) * 100
 			}
 		}
 
@@ -602,6 +630,7 @@ func (e *BinanceExecutor) GetPositionSummary(ctx context.Context, symbol string)
 		summary.WriteString(fmt.Sprintf("- 方向: %s (%s)\n", sideCN, strings.ToUpper(position.Side)))
 		summary.WriteString(fmt.Sprintf("- 数量: %.4f\n", position.Size))
 		summary.WriteString(fmt.Sprintf("- 开仓价格: $%.2f\n", position.EntryPrice))
+		summary.WriteString(fmt.Sprintf("- 杠杆倍数: %dx\n", position.Leverage))
 		summary.WriteString(fmt.Sprintf("- 当前价格: $%.2f\n", currentPrice))
 		summary.WriteString(fmt.Sprintf("- 未实现盈亏: %+.2f USDT (%+.2f%%)\n", position.UnrealizedPnL, pnlPct))
 

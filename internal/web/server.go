@@ -162,11 +162,45 @@ func (s *Server) handleSessions(ctx context.Context, c *app.RequestContext) {
 }
 
 // handleSessionDetail returns details of a specific session
+// handleSessionDetail 返回特定会话的详细信息
 func (s *Server) handleSessionDetail(ctx context.Context, c *app.RequestContext) {
-	// This would require implementing GetSessionByID in storage
-	c.JSON(http.StatusOK, utils.H{
-		"message": "Session detail endpoint - to be implemented",
-	})
+	// Get session ID from URL parameter
+	// 从 URL 参数获取会话 ID
+	idParam := c.Param("id")
+	var sessionID int64
+	if _, err := fmt.Sscanf(idParam, "%d", &sessionID); err != nil {
+		c.JSON(http.StatusBadRequest, utils.H{"error": "invalid session id"})
+		return
+	}
+
+	// Get session from database
+	// 从数据库获取会话
+	session, err := s.storage.GetSessionByID(sessionID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, utils.H{"error": err.Error()})
+		return
+	}
+
+	// Create template with custom functions
+	// 创建带自定义函数的模板
+	funcMap := template.FuncMap{
+		"extractAction": extractActionFromDecision,
+	}
+	tmpl := template.Must(template.New("session_detail.html").Funcs(funcMap).ParseFiles("internal/web/templates/session_detail.html"))
+
+	data := map[string]interface{}{
+		"Session": session,
+	}
+
+	// Execute template and render
+	// 执行模板并渲染
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		c.JSON(http.StatusInternalServerError, utils.H{"error": err.Error()})
+		return
+	}
+
+	c.Data(http.StatusOK, "text/html; charset=utf-8", buf.Bytes())
 }
 
 // handleStats returns statistics

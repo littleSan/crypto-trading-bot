@@ -256,6 +256,42 @@ func (s *Storage) GetLatestSessions(limit int) ([]*TradingSession, error) {
 	return sessions, rows.Err()
 }
 
+// GetSessionByID retrieves a session by its ID
+// GetSessionByID 根据 ID 获取会话
+func (s *Storage) GetSessionByID(id int64) (*TradingSession, error) {
+	query := `
+	SELECT id, symbol, timeframe, created_at,
+		   market_report, crypto_report, sentiment_report,
+		   position_info, decision, executed, execution_result
+	FROM trading_sessions
+	WHERE id = ?
+	`
+
+	session := &TradingSession{}
+	err := s.db.QueryRow(query, id).Scan(
+		&session.ID,
+		&session.Symbol,
+		&session.Timeframe,
+		&session.CreatedAt,
+		&session.MarketReport,
+		&session.CryptoReport,
+		&session.SentimentReport,
+		&session.PositionInfo,
+		&session.Decision,
+		&session.Executed,
+		&session.ExecutionResult,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("session not found: %d", id)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to query session: %w", err)
+	}
+
+	return session, nil
+}
+
 // GetSessionsBySymbol retrieves sessions for a specific symbol
 func (s *Storage) GetSessionsBySymbol(symbol string, limit int) ([]*TradingSession, error) {
 	query := `

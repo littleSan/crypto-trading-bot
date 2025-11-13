@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>会话详情 #{{.Session.ID}} - 加密货币交易机器人</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            line-height: 1.6;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 25px;
+            border-radius: 15px;
+            margin-bottom: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+
+        .header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        h1 {
+            color: #667eea;
+            font-size: 2em;
+        }
+
+        .back-button {
+            padding: 10px 20px;
+            background: #667eea;
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .back-button:hover {
+            background: #764ba2;
+            transform: translateY(-2px);
+        }
+
+        .session-info {
+            display: flex;
+            gap: 30px;
+            flex-wrap: wrap;
+            margin-top: 15px;
+        }
+
+        .info-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.95em;
+        }
+
+        .badge {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+
+        .badge-success {
+            background: #10b981;
+            color: white;
+        }
+
+        .badge-warning {
+            background: #f59e0b;
+            color: white;
+        }
+
+        .badge-info {
+            background: #3b82f6;
+            color: white;
+        }
+
+        .action-badge {
+            display: inline-block;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.9em;
+            letter-spacing: 0.5px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+        }
+
+        .action-buy {
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: white;
+        }
+
+        .action-sell {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            color: white;
+        }
+
+        .action-close {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            color: white;
+        }
+
+        .action-hold {
+            background: linear-gradient(135deg, #6b7280, #4b5563);
+            color: white;
+        }
+
+        .action-unknown {
+            background: linear-gradient(135deg, #9ca3af, #6b7280);
+            color: white;
+        }
+
+        .tabs-container {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+        }
+
+        .tabs {
+            display: flex;
+            background: #f3f4f6;
+            border-bottom: 2px solid #e5e7eb;
+        }
+
+        .tab {
+            flex: 1;
+            padding: 18px 25px;
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: 600;
+            color: #6b7280;
+            transition: all 0.2s;
+            position: relative;
+        }
+
+        .tab:hover {
+            background: rgba(102, 126, 234, 0.1);
+            color: #667eea;
+        }
+
+        .tab.active {
+            background: white;
+            color: #667eea;
+        }
+
+        .tab.active::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+        }
+
+        .tab-content {
+            padding: 30px;
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .report-content {
+            background: #f9fafb;
+            padding: 25px;
+            border-radius: 10px;
+            border-left: 4px solid #667eea;
+            min-height: 400px;
+        }
+
+        .report-content h1,
+        .report-content h2,
+        .report-content h3,
+        .report-content h4 {
+            color: #667eea;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+
+        .report-content h1 {
+            font-size: 1.8em;
+            border-bottom: 2px solid #e5e7eb;
+            padding-bottom: 10px;
+        }
+
+        .report-content h2 {
+            font-size: 1.5em;
+        }
+
+        .report-content h3 {
+            font-size: 1.2em;
+        }
+
+        .report-content p {
+            margin: 10px 0;
+            line-height: 1.8;
+        }
+
+        .report-content ul,
+        .report-content ol {
+            margin: 15px 0;
+            padding-left: 30px;
+        }
+
+        .report-content li {
+            margin: 8px 0;
+        }
+
+        .report-content strong {
+            color: #374151;
+            font-weight: 700;
+        }
+
+        .report-content code {
+            background: #f3f4f6;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            color: #ef4444;
+        }
+
+        .report-content pre {
+            background: #1f2937;
+            color: #f9fafb;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 15px 0;
+        }
+
+        .report-content pre code {
+            background: transparent;
+            color: #f9fafb;
+            padding: 0;
+        }
+
+        .report-content blockquote {
+            border-left: 4px solid #667eea;
+            padding-left: 15px;
+            margin: 15px 0;
+            color: #6b7280;
+            font-style: italic;
+        }
+
+        .report-content table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+
+        .report-content table th,
+        .report-content table td {
+            border: 1px solid #e5e7eb;
+            padding: 12px;
+            text-align: left;
+        }
+
+        .report-content table th {
+            background: #f3f4f6;
+            font-weight: 700;
+            color: #374151;
+        }
+
+        .report-content table tr:hover {
+            background: #f9fafb;
+        }
+
+        .report-content a {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        .report-content a:hover {
+            text-decoration: underline;
+        }
+
+        .empty-content {
+            text-align: center;
+            padding: 60px 20px;
+            color: #9ca3af;
+            font-size: 1.1em;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #6b7280;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 30px;
+            height: 30px;
+            border: 3px solid #e5e7eb;
+            border-top-color: #667eea;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+    </style>
+    <!-- Marked.js for Markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@11.0.0/marked.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="header-top">
+                <h1>📊 会话详情 #{{.Session.ID}}</h1>
+                <a href="/" class="back-button">← 返回主页</a>
+            </div>
+            <div class="session-info">
+                <div class="info-item">
+                    <strong>交易对:</strong>
+                    <span class="badge badge-info">{{.Session.Symbol}}</span>
+                </div>
+                <div class="info-item">
+                    <strong>时间周期:</strong>
+                    <span class="badge badge-info">{{.Session.Timeframe}}</span>
+                </div>
+                <div class="info-item">
+                    <strong>创建时间:</strong>
+                    <span>{{.Session.CreatedAt.Format "2006-01-02 15:04:05"}}</span>
+                </div>
+                <div class="info-item">
+                    <strong>已执行:</strong>
+                    {{if .Session.Executed}}
+                    <span class="badge badge-success">✅ 是</span>
+                    {{else}}
+                    <span class="badge badge-warning">⏸ 否</span>
+                    {{end}}
+                </div>
+                {{if .Session.Decision}}
+                <div class="info-item">
+                    <strong>交易决策:</strong>
+                    {{$action := extractAction .Session.Decision}}
+                    {{if eq $action "BUY"}}
+                        <span class="action-badge action-buy">📈 BUY</span>
+                    {{else if eq $action "SELL"}}
+                        <span class="action-badge action-sell">📉 SELL</span>
+                    {{else if eq $action "CLOSE_LONG"}}
+                        <span class="action-badge action-close">🔒 平多</span>
+                    {{else if eq $action "CLOSE_SHORT"}}
+                        <span class="action-badge action-close">🔒 平空</span>
+                    {{else if eq $action "HOLD"}}
+                        <span class="action-badge action-hold">💤 HOLD</span>
+                    {{else}}
+                        <span class="action-badge action-unknown">❓ {{$action}}</span>
+                    {{end}}
+                </div>
+                {{end}}
+            </div>
+        </div>
+
+        <div class="tabs-container">
+            <div class="tabs">
+                <button class="tab active" onclick="switchTab(event, 'decision')">
+                    🎯 LLM 最终决策
+                </button>
+                <button class="tab" onclick="switchTab(event, 'market')">
+                    📊 市场分析
+                </button>
+                <button class="tab" onclick="switchTab(event, 'crypto')">
+                    💰 加密货币分析
+                </button>
+                <button class="tab" onclick="switchTab(event, 'sentiment')">
+                    😊 市场情绪
+                </button>
+                <button class="tab" onclick="switchTab(event, 'position')">
+                    💼 持仓信息
+                </button>
+            </div>
+
+            <div id="decision" class="tab-content active">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>正在渲染决策内容...</p>
+                </div>
+            </div>
+
+            <div id="market" class="tab-content">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>正在渲染市场分析...</p>
+                </div>
+            </div>
+
+            <div id="crypto" class="tab-content">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>正在渲染加密货币分析...</p>
+                </div>
+            </div>
+
+            <div id="sentiment" class="tab-content">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>正在渲染情绪分析...</p>
+                </div>
+            </div>
+
+            <div id="position" class="tab-content">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>正在渲染持仓信息...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Session data from Go template
+        const sessionData = {
+            decision: {{.Session.Decision}},
+            marketReport: {{.Session.MarketReport}},
+            cryptoReport: {{.Session.CryptoReport}},
+            sentimentReport: {{.Session.SentimentReport}},
+            positionInfo: {{.Session.PositionInfo}}
+        };
+
+        // Configure marked
+        marked.setOptions({
+            breaks: true,
+            gfm: true
+        });
+
+        // Render markdown content
+        function renderMarkdown(content) {
+            if (!content || content.trim() === '') {
+                return '<div class="empty-content">📭 暂无内容</div>';
+            }
+            try {
+                return '<div class="report-content">' + marked.parse(content) + '</div>';
+            } catch (e) {
+                console.error('Markdown rendering error:', e);
+                return '<div class="empty-content">⚠️ 渲染失败: ' + e.message + '</div>';
+            }
+        }
+
+        // Render all content on page load
+        window.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('decision').innerHTML = renderMarkdown(sessionData.decision);
+            document.getElementById('market').innerHTML = renderMarkdown(sessionData.marketReport);
+            document.getElementById('crypto').innerHTML = renderMarkdown(sessionData.cryptoReport);
+            document.getElementById('sentiment').innerHTML = renderMarkdown(sessionData.sentimentReport);
+            document.getElementById('position').innerHTML = renderMarkdown(sessionData.positionInfo);
+        });
+
+        // Tab switching
+        function switchTab(event, tabId) {
+            // Hide all tab contents
+            const contents = document.getElementsByClassName('tab-content');
+            for (let content of contents) {
+                content.classList.remove('active');
+            }
+
+            // Remove active class from all tabs
+            const tabs = document.getElementsByClassName('tab');
+            for (let tab of tabs) {
+                tab.classList.remove('active');
+            }
+
+            // Show selected tab content
+            document.getElementById(tabId).classList.add('active');
+
+            // Add active class to clicked tab
+            event.currentTarget.classList.add('active');
+        }
+    </script>
+</body>
+</html>
