@@ -879,7 +879,7 @@ func getSymbolPrecision(symbol string) (precision int, minQty float64) {
 		minQty = 0.01
 	case "BNBUSDT", "BNB/USDT":
 		precision = 2 // 0.01 BNB
-		minQty = 0.01
+		minQty = 0.001
 	case "XRPUSDT", "XRP/USDT":
 		precision = 1 // 0.1 XRP
 		minQty = 0.1

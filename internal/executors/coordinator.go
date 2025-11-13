@@ -242,18 +242,20 @@ func (tc *TradeCoordinator) calculatePositionSize(ctx context.Context, symbol st
 		return 0, fmt.Errorf("获取当前价格失败: %w", err)
 	}
 
-	// Calculate position size based on percentage
-	// 根据百分比计算仓位大小
-	// Formula: (Balance × Percentage%) / Price = Quantity
-	// 公式：(余额 × 百分比%) / 价格 = 数量
+	// Calculate position size based on percentage and leverage
+	// 根据百分比和杠杆倍数计算仓位大小
+	// Formula: (Balance × Percentage% × Leverage) / Price = Quantity
+	// 公式：(余额 × 百分比% × 杠杆倍数) / 价格 = 数量
 	fundsToUse := balance * (positionSizePercent / 100.0)
-	rawSize := fundsToUse / currentPrice
+	leveragedFunds := fundsToUse * float64(llmLeverage)
+	rawSize := leveragedFunds / currentPrice
 
 	tc.logger.Info(fmt.Sprintf("💰 账户余额: %.2f USDT", balance))
-	tc.logger.Info(fmt.Sprintf("📊 LLM 建议: %.1f%% 资金 = %.2f USDT", positionSizePercent, fundsToUse))
+	tc.logger.Info(fmt.Sprintf("📊 LLM 建议: %.1f%% 资金 = %.2f USDT (保证金)", positionSizePercent, fundsToUse))
+	tc.logger.Info(fmt.Sprintf("⚡ 杠杆倍数: %dx", llmLeverage))
 	tc.logger.Info(fmt.Sprintf("💵 当前价格: $%.2f", currentPrice))
-	tc.logger.Info(fmt.Sprintf("📐 计算数量: %.2f USDT / $%.2f = %.4f %s",
-		fundsToUse, currentPrice, rawSize, symbol))
+	tc.logger.Info(fmt.Sprintf("📐 计算数量: %.2f USDT × %d倍 / $%.2f = %.4f %s",
+		fundsToUse, llmLeverage, currentPrice, rawSize, symbol))
 
 	// Adjust quantity to meet symbol's precision and minimum quantity requirements
 	// 调整数量以符合交易对的精度和最小数量要求

@@ -357,6 +357,10 @@ func ValidateDecision(decision *TradingDecision, currentPosition *executors.Posi
 func ParseMultiCurrencyDecision(decisionText string, symbols []string) map[string]*TradingDecision {
 	decisions := make(map[string]*TradingDecision)
 
+	// Extract only the "最终决策" section to avoid parsing analysis text
+	// 只提取"最终决策"部分以避免解析分析文本
+	finalDecisionSection := extractFinalDecisionSection(decisionText)
+
 	// Try to find decision blocks for each symbol
 	// 尝试为每个交易对找到决策块
 	for _, symbol := range symbols {
@@ -374,15 +378,15 @@ func ParseMultiCurrencyDecision(decisionText string, symbols []string) map[strin
 		patterns := []string{
 			fmt.Sprintf(`(?si)【%s】(.{0,1000}?)(?:【|$)`, symbolLower),
 			fmt.Sprintf(`(?si)【%s】(.{0,1000}?)(?:【|$)`, baseSymbol),
-			fmt.Sprintf(`(?si)%s(.{0,1000}?)(?:\n\n|$)`, symbolLower),
+			fmt.Sprintf(`(?si)\*{0,2}%s\*{0,2}(.{0,1000}?)(?:\n\n|$)`, symbolLower), // Match **BTC/USDT** or BTC/USDT
 		}
 
 		var blockText string
 		for _, pattern := range patterns {
 			re := regexp.MustCompile(pattern)
-			// Search in original text to preserve case for action extraction
-			// 在原始文本中搜索以保留大小写用于提取动作
-			matches := re.FindStringSubmatch(decisionText)
+			// Search in final decision section only, not in analysis section
+			// 只在最终决策部分搜索，不在分析部分搜索
+			matches := re.FindStringSubmatch(finalDecisionSection)
 			if len(matches) > 1 {
 				blockText = matches[1]
 				break
@@ -408,6 +412,31 @@ func ParseMultiCurrencyDecision(decisionText string, symbols []string) map[strin
 	}
 
 	return decisions
+}
+
+// extractFinalDecisionSection extracts only the final decision section from LLM output
+// extractFinalDecisionSection 从 LLM 输出中只提取最终决策部分
+func extractFinalDecisionSection(text string) string {
+	// Look for section headers that indicate final decisions
+	// 查找表示最终决策的章节标题
+	patterns := []string{
+		`(?si)##\s*最终决策[：:\s]*(.*)`,             // ## 最终决策：
+		`(?si)##\s*交易决策[：:\s]*(.*)`,             // ## 交易决策：
+		`(?si)##\s*final\s*decision[：:\s]*(.*)`, // ## Final Decision:
+		`(?si)##\s*决策[：:\s]*(.*)`,               // ## 决策：
+	}
+
+	for _, pattern := range patterns {
+		re := regexp.MustCompile(pattern)
+		matches := re.FindStringSubmatch(text)
+		if len(matches) > 1 {
+			return matches[1] // Return everything after the header
+		}
+	}
+
+	// If no section found, return full text (backward compatibility)
+	// 如果未找到章节，返回完整文本（向后兼容）
+	return text
 }
 
 // extractPositionSizePercent extracts position size percentage from text

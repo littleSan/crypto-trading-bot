@@ -11,8 +11,32 @@ import (
 	"github.com/oak/crypto-trading-bot/internal/logger"
 )
 
-// StopLossManager manages stop-loss for all active positions (LLM-driven fixed stop-loss)
-// StopLossManager 管理所有活跃持仓的止损（LLM 驱动的固定止损）
+// StopLossManager manages stop-loss for all active positions
+// StopLossManager 管理所有活跃持仓的止损
+//
+// Architecture: Server-side stop-loss strategy (Fixed stop-loss)
+// 架构：服务器端止损策略（固定止损）
+//
+// Responsibilities:
+// 职责：
+//  1. Position lifecycle management (register, remove, query)
+//     持仓生命周期管理（注册、移除、查询）
+//  2. Binance stop-loss order placement and cancellation
+//     币安止损单下单和取消
+//  3. Position data storage and retrieval
+//     持仓数据存储和检索
+//
+// Note: Local price monitoring is DISABLED. Stop-loss execution relies entirely on
+// Binance server-side STOP_MARKET orders, which provide:
+// 注意：本地价格监控已禁用。止损执行完全依赖币安服务器端 STOP_MARKET 订单，优势：
+//   - 24/7 server-side monitoring (no local uptime dependency)
+//     24/7 服务器端监控（不依赖本地程序运行）
+//   - Millisecond-level trigger speed (vs 10s polling)
+//     毫秒级触发速度（相比 10 秒轮询）
+//   - Resilience to local program crashes/network issues
+//     对本地程序崩溃/网络问题有弹性
+//   - No duplicate execution risk
+//     无重复执行风险
 type StopLossManager struct {
 	positions map[string]*Position // symbol -> Position
 	executor  *BinanceExecutor     // 执行器 / Executor
@@ -131,6 +155,11 @@ func (sm *StopLossManager) UpdateStopLoss(ctx context.Context, symbol string, ne
 
 // UpdatePosition updates position price and checks if stop-loss should trigger
 // UpdatePosition 更新持仓价格并检查是否应触发止损
+//
+// DEPRECATED: This method is part of the deprecated local monitoring system.
+// 已弃用：此方法是已弃用的本地监控系统的一部分。
+// Use Binance server-side STOP_MARKET orders instead.
+// 请使用币安服务器端 STOP_MARKET 订单。
 func (sm *StopLossManager) UpdatePosition(ctx context.Context, symbol string, currentPrice float64) error {
 	sm.mu.Lock()
 	pos, exists := sm.positions[symbol]
@@ -158,6 +187,31 @@ func (sm *StopLossManager) UpdatePosition(ctx context.Context, symbol string, cu
 // placeStopLossOrder places a stop-loss order on Binance
 // placeStopLossOrder 在币安下止损单
 func (sm *StopLossManager) placeStopLossOrder(ctx context.Context, pos *Position, stopPrice float64) error {
+	// Get current market price for validation
+	// 获取当前市场价格用于验证
+	currentPrice, err := sm.getCurrentPrice(ctx, pos.Symbol)
+	if err != nil {
+		return fmt.Errorf("获取当前价格失败: %w", err)
+	}
+
+	// Validate stop-loss price to prevent immediate trigger
+	// 验证止损价格以防止立即触发
+	if pos.Side == "short" {
+		// 空仓止损买入：止损价格必须高于当前市场价
+		if stopPrice <= currentPrice {
+			sm.logger.Warning(fmt.Sprintf("【%s】❌ 空仓止损价格设置错误: %.2f <= 当前价 %.2f (会立即触发)",
+				pos.Symbol, stopPrice, currentPrice))
+			return fmt.Errorf("空仓止损价格 %.2f 必须高于当前市场价 %.2f，否则会立即触发", stopPrice, currentPrice)
+		}
+	} else {
+		// 多仓止损卖出：止损价格必须低于当前市场价
+		if stopPrice >= currentPrice {
+			sm.logger.Warning(fmt.Sprintf("【%s】❌ 多仓止损价格设置错误: %.2f >= 当前价 %.2f (会立即触发)",
+				pos.Symbol, stopPrice, currentPrice))
+			return fmt.Errorf("多仓止损价格 %.2f 必须低于当前市场价 %.2f，否则会立即触发", stopPrice, currentPrice)
+		}
+	}
+
 	var orderSide futures.SideType
 	if pos.Side == "short" {
 		orderSide = futures.SideTypeBuy
@@ -183,8 +237,8 @@ func (sm *StopLossManager) placeStopLossOrder(ctx context.Context, pos *Position
 	}
 
 	pos.StopLossOrderID = fmt.Sprintf("%d", order.OrderID)
-	sm.logger.Success(fmt.Sprintf("【%s】止损单已下达: %.2f (订单ID: %s)",
-		pos.Symbol, stopPrice, pos.StopLossOrderID))
+	sm.logger.Success(fmt.Sprintf("【%s】止损单已下达: %.2f (订单ID: %s, 当前价: %.2f)",
+		pos.Symbol, stopPrice, pos.StopLossOrderID, currentPrice))
 
 	return nil
 }
@@ -215,6 +269,11 @@ func (sm *StopLossManager) cancelStopLossOrder(ctx context.Context, pos *Positio
 
 // executeStopLoss executes stop-loss (close position)
 // executeStopLoss 执行止损（平仓）
+//
+// DEPRECATED: This method is part of the deprecated local monitoring system.
+// 已弃用：此方法是已弃用的本地监控系统的一部分。
+// Binance STOP_MARKET orders handle stop-loss execution automatically.
+// 币安 STOP_MARKET 订单会自动处理止损执行。
 func (sm *StopLossManager) executeStopLoss(ctx context.Context, pos *Position) error {
 	sm.logger.Warning(fmt.Sprintf("【%s】🛑 执行止损平仓", pos.Symbol))
 
@@ -241,6 +300,23 @@ func (sm *StopLossManager) executeStopLoss(ctx context.Context, pos *Position) e
 
 // MonitorPositions monitors all positions in real-time (every 10 seconds)
 // MonitorPositions 实时监控所有持仓（每 10 秒）
+//
+// DEPRECATED: This method is deprecated and should NOT be used with fixed stop-loss strategy.
+// 已弃用：此方法已弃用，不应与固定止损策略一起使用。
+//
+// Reason: With Binance server-side STOP_MARKET orders, local monitoring is redundant and can cause issues:
+// 原因：使用币安服务器端 STOP_MARKET 订单时，本地监控是多余的，可能导致问题：
+//  1. Duplicate execution: Both Binance and local monitoring may try to close the position
+//     重复执行：币安和本地监控可能都尝试平仓
+//  2. API overhead: Polling price every 10 seconds for all positions
+//     API 开销：每 10 秒为所有持仓轮询价格
+//  3. Slower than Binance: 10s polling vs millisecond server-side trigger
+//     比币安慢：10 秒轮询 vs 毫秒级服务器端触发
+//  4. Reliability: Depends on local program uptime and network stability
+//     可靠性：依赖本地程序运行和网络稳定性
+//
+// For fixed stop-loss strategy, rely entirely on Binance STOP_MARKET orders placed via PlaceInitialStopLoss().
+// 对于固定止损策略，完全依赖通过 PlaceInitialStopLoss() 下达的币安 STOP_MARKET 订单。
 func (sm *StopLossManager) MonitorPositions(interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()

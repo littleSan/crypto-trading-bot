@@ -174,12 +174,17 @@ func main() {
 		}
 	}
 
-	// Start real-time position monitoring in background
-	// 在后台启动实时持仓监控
-	go func() {
-		log.Success("🔍 启动持仓监控，间隔: 10 秒")
-		globalStopLossManager.MonitorPositions(10 * time.Second)
-	}()
+	// Note: Local monitoring disabled - relying on Binance server-side stop-loss orders
+	// 注意：已禁用本地监控 - 完全依赖币安服务器端止损单
+	// 原因：
+	//   1. 币安止损单 24/7 服务器端监控，触发速度更快（毫秒级）
+	//   2. 避免本地监控与币安止损单重复执行
+	//   3. 减少 API 调用开销
+	//   4. 即使本地程序崩溃，币安止损单仍会执行
+	// go func() {
+	// 	log.Success("🔍 启动持仓监控，间隔: 10 秒")
+	// 	globalStopLossManager.MonitorPositions(10 * time.Second)
+	// }()
 
 	// Start balance history recording in background
 	// 在后台启动余额历史记录

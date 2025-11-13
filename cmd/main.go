@@ -223,9 +223,14 @@ func main() {
 		// 初始化止损管理器
 		stopLossManager := executors.NewStopLossManager(cfg, executor, log)
 
-		// Start real-time position monitoring in background
-		// 在后台启动实时持仓监控
-		go stopLossManager.MonitorPositions(10 * time.Second) // 每 10 秒检查一次
+		// Note: Local monitoring disabled - relying on Binance server-side stop-loss orders
+		// 注意：已禁用本地监控 - 完全依赖币安服务器端止损单
+		// 原因：
+		//   1. 币安止损单 24/7 服务器端监控，触发速度更快（毫秒级）
+		//   2. 避免本地监控与币安止损单重复执行
+		//   3. 减少 API 调用开销
+		//   4. 即使本地程序崩溃，币安止损单仍会执行
+		// go stopLossManager.MonitorPositions(10 * time.Second) // 已弃用
 
 		// Execute trades for each symbol
 		// 为每个交易对执行交易

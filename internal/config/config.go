@@ -56,6 +56,10 @@ type Config struct {
 	// PositionSize removed - now uses LLM's position size recommendation
 	// 移除 PositionSize - 现在使用 LLM 的仓位建议
 
+	// Analysis options
+	// 分析选项
+	EnableSentimentAnalysis bool // 是否启用市场情绪分析 / Enable sentiment analysis (CryptoOracle API)
+
 	// Stop-loss management configuration (LLM-driven fixed stop-loss only)
 	// 止损管理配置（仅 LLM 驱动的固定止损）
 	EnableStopLoss bool // 是否启用止损管理 / Enable stop-loss management
@@ -136,6 +140,9 @@ func LoadConfig(pathToEnv string) (*Config, error) {
 		CryptoTimeframe:    viper.GetString("CRYPTO_TIMEFRAME"),
 		CryptoLookbackDays: viper.GetInt("CRYPTO_LOOKBACK_DAYS"),
 		// PositionSize removed - now uses LLM's position size recommendation
+
+		// Analysis options
+		EnableSentimentAnalysis: viper.GetBool("ENABLE_SENTIMENT_ANALYSIS"),
 
 		// Stop-loss management (LLM-driven)
 		EnableStopLoss: viper.GetBool("ENABLE_STOPLOSS"),
@@ -241,6 +248,10 @@ func setDefaults() {
 	viper.SetDefault("CRYPTO_TIMEFRAME", "1h")
 	// POSITION_SIZE removed - now uses LLM's position size recommendation
 	// 移除 POSITION_SIZE - 现在使用 LLM 的仓位建议
+
+	// Analysis defaults
+	// 分析选项默认值
+	viper.SetDefault("ENABLE_SENTIMENT_ANALYSIS", true) // 默认启用情绪分析 / Enable sentiment analysis by default
 
 	// Stop-loss management defaults (LLM-driven fixed stop-loss)
 	// 止损管理默认值（LLM 驱动的固定止损）

@@ -780,7 +780,111 @@ func (m *MarketData) Get24HrStats(ctx context.Context, symbol string) (map[strin
 	return result, nil
 }
 
+// FormatOrderBookReport formats order book data into a detailed report for LLM
+// FormatOrderBookReport 将订单簿数据格式化为 LLM 易读的详细报告
+func FormatOrderBookReport(orderBook map[string]interface{}, topN int) string {
+	var report strings.Builder
+
+	bidVolume := orderBook["bid_volume"].(float64)
+	askVolume := orderBook["ask_volume"].(float64)
+	bidAskRatio := orderBook["bid_ask_ratio"].(float64)
+
+	// Overall sentiment
+	var sentiment string
+	if bidAskRatio > 1.5 {
+		sentiment = "多头强势 💪"
+	} else if bidAskRatio < 0.67 {
+		sentiment = "空头强势 📉"
+	} else {
+		sentiment = "多空均衡 ⚖️"
+	}
+
+	report.WriteString(fmt.Sprintf("📊 订单簿深度分析（前 %d 档）:\n", topN))
+	report.WriteString(fmt.Sprintf("  买卖盘总量: 买 %.2f vs 卖 %.2f\n", bidVolume, askVolume))
+	report.WriteString(fmt.Sprintf("  买卖比: %.2f (%s)\n\n", bidAskRatio, sentiment))
+
+	// Parse asks (resistance levels)
+	asks := orderBook["asks"].([]futures.Ask)
+	if len(asks) > 0 {
+		report.WriteString("🔴 卖盘阻力位（由近到远）:\n")
+
+		// Calculate average ask volume for "large order" threshold
+		var totalAskVol float64
+		for i := 0; i < len(asks) && i < topN; i++ {
+			qty, _ := strconv.ParseFloat(asks[i].Quantity, 64)
+			totalAskVol += qty
+		}
+		avgAskVol := totalAskVol / float64(min(len(asks), topN))
+		largeOrderThreshold := avgAskVol * 1.5 // 1.5x average = large order
+
+		for i := 0; i < len(asks) && i < topN; i++ {
+			qty, _ := strconv.ParseFloat(asks[i].Quantity, 64)
+
+			largeOrderFlag := ""
+			if qty > largeOrderThreshold {
+				largeOrderFlag = " 🔥 大单墙"
+			}
+
+			report.WriteString(fmt.Sprintf("  $%s: %.4f%s\n",
+				formatPrice(asks[i].Price), qty, largeOrderFlag))
+		}
+		report.WriteString("\n")
+	}
+
+	// Parse bids (support levels)
+	bids := orderBook["bids"].([]futures.Bid)
+	if len(bids) > 0 {
+		report.WriteString("🟢 买盘支撑位（由近到远）:\n")
+
+		// Calculate average bid volume for "large order" threshold
+		var totalBidVol float64
+		for i := 0; i < len(bids) && i < topN; i++ {
+			qty, _ := strconv.ParseFloat(bids[i].Quantity, 64)
+			totalBidVol += qty
+		}
+		avgBidVol := totalBidVol / float64(min(len(bids), topN))
+		largeOrderThreshold := avgBidVol * 1.5 // 1.5x average = large order
+
+		for i := 0; i < len(bids) && i < topN; i++ {
+			qty, _ := strconv.ParseFloat(bids[i].Quantity, 64)
+
+			largeOrderFlag := ""
+			if qty > largeOrderThreshold {
+				largeOrderFlag = " 🔥 大单墙"
+			}
+
+			report.WriteString(fmt.Sprintf("  $%s: %.4f%s\n",
+				formatPrice(bids[i].Price), qty, largeOrderFlag))
+		}
+	}
+
+	return report.String()
+}
+
 // Helper functions
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func formatPrice(priceStr string) string {
+	price, err := strconv.ParseFloat(priceStr, 64)
+	if err != nil {
+		return priceStr
+	}
+
+	// Format with appropriate decimals based on price magnitude
+	if price >= 1000 {
+		return fmt.Sprintf("%.2f", price)
+	} else if price >= 1 {
+		return fmt.Sprintf("%.4f", price)
+	} else {
+		return fmt.Sprintf("%.6f", price)
+	}
+}
+
 func convertTimeframe(tf string) string {
 	// Convert from format like "1h", "15m", "1d" to Binance interval format
 	switch tf {
