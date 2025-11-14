@@ -866,7 +866,38 @@ func FormatLongerTimeframeReport(symbol string, timeframe string, ohlcvData []OH
 
 	// === 长期数据标题 ===
 	// === Long-term Data Header ===
-	sb.WriteString(fmt.Sprintf("长期数据 (%s):\n\n", timeframe))
+	sb.WriteString(fmt.Sprintf("长期数据 (%s):\n", timeframe))
+
+	// === 序列数据配置 ===
+	// === Series Data Configuration ===
+	seriesLength := 10
+	startIdx := lastIdx - seriesLength + 1
+	if startIdx < 0 {
+		startIdx = 0
+	}
+
+	// Helper function to format float array (last N values)
+	// 辅助函数：格式化浮点数数组（最近 N 个值）
+	formatSeries := func(data []float64, startIdx, endIdx int, decimals int) string {
+		var values []string
+		for i := startIdx; i <= endIdx; i++ {
+			if i >= 0 && i < len(data) && !math.IsNaN(data[i]) {
+				values = append(values, fmt.Sprintf("%.*f", decimals, data[i]))
+			}
+		}
+		return "[" + strings.Join(values, ", ") + "]"
+	}
+
+	// === 中间价序列（最近10期）===
+	// === Middle Price Series (Last 10 periods) ===
+	var middlePrices []string
+	for i := startIdx; i <= lastIdx; i++ {
+		if i >= 0 && i < len(ohlcvData) {
+			middlePrice := (ohlcvData[i].High + ohlcvData[i].Low) / 2
+			middlePrices = append(middlePrices, fmt.Sprintf("%.1f", middlePrice))
+		}
+	}
+	sb.WriteString(fmt.Sprintf("中间价(%s间隔): [%s]\n", timeframe, strings.Join(middlePrices, ", ")))
 
 	// === EMA(20) vs 50-Period EMA ===
 	ema20Val := 0.0
@@ -905,24 +936,6 @@ func FormatLongerTimeframeReport(symbol string, timeframe string, ohlcvData []OH
 
 	// === MACD 序列（最近10期）===
 	// === MACD Series (Last 10 periods) ===
-	seriesLength := 10
-	startIdx := lastIdx - seriesLength + 1
-	if startIdx < 0 {
-		startIdx = 0
-	}
-
-	// Helper function to format float array (last N values)
-	// 辅助函数：格式化浮点数数组（最近 N 个值）
-	formatSeries := func(data []float64, startIdx, endIdx int, decimals int) string {
-		var values []string
-		for i := startIdx; i <= endIdx; i++ {
-			if i >= 0 && i < len(data) && !math.IsNaN(data[i]) {
-				values = append(values, fmt.Sprintf("%.*f", decimals, data[i]))
-			}
-		}
-		return "[" + strings.Join(values, ", ") + "]"
-	}
-
 	if len(indicators.MACD) > lastIdx {
 		sb.WriteString(fmt.Sprintf("MACD: %s\n\n", formatSeries(indicators.MACD, startIdx, lastIdx, 1)))
 	}
