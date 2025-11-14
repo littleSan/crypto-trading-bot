@@ -492,7 +492,7 @@ func calculateADX(highs, lows, closes []float64, period int) (adx, diPlus, diMin
 
 	// Calculate ADX (smoothed DX)
 	// 计算 ADX（平滑的 DX）
-	adxPeriod := period * 2 // ADX period is typically 2x the DI period
+	adxPeriod := period // Use same period as DI (Wilder's standard method)
 	for i := period + adxPeriod - 1; i < n; i++ {
 		if i == period+adxPeriod-1 {
 			// Initial ADX is average of first period DX values
@@ -617,7 +617,7 @@ func FormatIndicatorReport(symbol string, timeframe string, ohlcvData []OHLCV, i
 
 	sb.WriteString(fmt.Sprintf("当前价格 = %.1f, 当前 EMA(20) = %.1f, 当前 MACD = %.1f, 当前 RSI(7) = %.1f\n\n",
 		latestPrice, currentEMA20, currentMACD, currentRSI7))
-
+	sb.WriteString(fmt.Sprintf("下述所有价格或信号数据均按时间从旧到新排列。\n\n"))
 	// === 日内数据（最近10期）===
 	// === Intraday Data (Last 10 periods) ===
 	sb.WriteString(fmt.Sprintf("日内数据(%s)\n\n", timeframe))

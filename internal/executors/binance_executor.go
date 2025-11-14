@@ -647,7 +647,8 @@ func (e *BinanceExecutor) executeCloseShort(ctx context.Context, symbol string, 
 }
 
 // GetPositionSummary returns a formatted position summary
-func (e *BinanceExecutor) GetPositionSummary(ctx context.Context, symbol string) string {
+// GetPositionSummary 返回格式化的持仓摘要信息
+func (e *BinanceExecutor) GetPositionSummary(ctx context.Context, symbol string, stopLossManager *StopLossManager) string {
 	var summary strings.Builder
 
 	// Get account balance
@@ -731,21 +732,31 @@ func (e *BinanceExecutor) GetPositionSummary(ctx context.Context, symbol string)
 		summary.WriteString(fmt.Sprintf("- 当前价格: $%.2f\n", currentPrice))
 		summary.WriteString(fmt.Sprintf("- 未实现盈亏: %+.2f USDT (%+.2f%%)\n", position.UnrealizedPnL, pnlPct))
 
+		// Display stop-loss information if available
+		// 显示止损信息（如果可用）
+		if stopLossManager != nil {
+			managedPos := stopLossManager.GetPosition(symbol)
+			if managedPos != nil && managedPos.CurrentStopLoss > 0 {
+				summary.WriteString(fmt.Sprintf("- 当前止损: $%.2f", managedPos.CurrentStopLoss))
+
+				// Calculate stop-loss distance percentage
+				// 计算止损距离百分比
+				stopDistance := 0.0
+				if position.Side == "long" {
+					stopDistance = ((currentPrice - managedPos.CurrentStopLoss) / currentPrice) * 100
+				} else {
+					stopDistance = ((managedPos.CurrentStopLoss - currentPrice) / currentPrice) * 100
+				}
+				summary.WriteString(fmt.Sprintf(" (距离当前价 %.2f%%)\n", stopDistance))
+			}
+		}
+
 		if position.LiquidationPrice > 0 {
 			summary.WriteString(fmt.Sprintf("- 爆仓价格: $%.2f\n", position.LiquidationPrice))
 		}
 
-		// Provide suggestions
-		if pnlPct < -5 {
-			summary.WriteString(fmt.Sprintf("\n⚠️ **警告**: 当前浮亏 %.2f%%，已超过 -5%%，建议考虑止损\n", pnlPct))
-		} else if pnlPct > 3 {
-			summary.WriteString(fmt.Sprintf("\n✅ **盈利中**: 当前浮盈 %.2f%%，已超过 +3%%，可考虑止盈或继续持有\n", pnlPct))
-		} else {
-			summary.WriteString("\n📊 **状态正常**: 当前盈亏在合理范围内\n")
-		}
 	} else {
 		summary.WriteString(fmt.Sprintf("**当前持仓 %s**: 无持仓\n", symbol))
-		summary.WriteString("\n💡 **建议**: 可以根据市场分析开新仓位\n")
 	}
 
 	return summary.String()

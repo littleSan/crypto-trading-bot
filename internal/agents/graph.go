@@ -213,20 +213,22 @@ func loadPromptFromFile(promptPath string, log *logger.ColorLogger) string {
 
 // SimpleTradingGraph creates a simplified trading workflow using Eino Graph
 type SimpleTradingGraph struct {
-	config   *config.Config
-	logger   *logger.ColorLogger
-	executor *executors.BinanceExecutor
-	state    *AgentState
+	config          *config.Config
+	logger          *logger.ColorLogger
+	executor        *executors.BinanceExecutor
+	state           *AgentState
+	stopLossManager *executors.StopLossManager
 }
 
 // NewSimpleTradingGraph creates a new simple trading graph
 // NewSimpleTradingGraph 创建新的简单交易图
-func NewSimpleTradingGraph(cfg *config.Config, log *logger.ColorLogger, executor *executors.BinanceExecutor) *SimpleTradingGraph {
+func NewSimpleTradingGraph(cfg *config.Config, log *logger.ColorLogger, executor *executors.BinanceExecutor, stopLossManager *executors.StopLossManager) *SimpleTradingGraph {
 	return &SimpleTradingGraph{
-		config:   cfg,
-		logger:   log,
-		executor: executor,
-		state:    NewAgentState(cfg.CryptoSymbols, cfg.CryptoTimeframe),
+		config:          cfg,
+		logger:          log,
+		executor:        executor,
+		state:           NewAgentState(cfg.CryptoSymbols, cfg.CryptoTimeframe),
+		stopLossManager: stopLossManager,
 	}
 }
 
@@ -468,7 +470,7 @@ func (g *SimpleTradingGraph) BuildGraph(ctx context.Context) (compose.Runnable[m
 
 				g.logger.Info(fmt.Sprintf("  📈 正在获取 %s 持仓...", sym))
 
-				posInfo := g.executor.GetPositionSummary(ctx, sym)
+				posInfo := g.executor.GetPositionSummary(ctx, sym, g.stopLossManager)
 				g.state.SetPositionInfo(sym, posInfo)
 
 				g.logger.Success(fmt.Sprintf("  ✅ %s 持仓信息获取完成", sym))
