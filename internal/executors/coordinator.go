@@ -286,6 +286,38 @@ func (tc *TradeCoordinator) calculatePositionSize(ctx context.Context, symbol st
 
 	tc.logger.Info(fmt.Sprintf("原始数量: %.4f → 调整后: %.4f (符合 %s 精度要求)", rawSize, adjustedSize, symbol))
 
+	// Check minimum notional value (Binance requires ≥ $100 USDT)
+	// 检查最小订单价值（币安要求 ≥ $100 USDT）
+	notionalValue := adjustedSize * currentPrice
+	minNotional := 100.0
+
+	if notionalValue < minNotional {
+		return 0, fmt.Errorf(`
+❌ 订单价值不足: $%.2f < $%.2f (币安最小要求)
+
+原因分析：
+- LLM 建议仓位: %.1f%% 资金 = $%.2f 保证金
+- 杠杆倍数: %dx
+- 订单价值: $%.2f × %d = $%.2f
+- 精度调整: %.4f → %.4f (导致订单价值降低)
+
+解决方案：
+1. 增加仓位百分比至至少 %.1f%% (推荐)
+2. 或选择 HOLD 等待更好的机会
+
+💡 提示: 当前余额 $%.2f 在 %dx 杠杆下，最小仓位约需 %.1f%%`,
+			notionalValue, minNotional,
+			positionSizePercent, fundsToUse,
+			actualLeverage,
+			adjustedSize, actualLeverage, notionalValue,
+			rawSize, adjustedSize,
+			(minNotional/float64(actualLeverage)/balance)*100,
+			balance, actualLeverage,
+			(minNotional/float64(actualLeverage)/balance)*100)
+	}
+
+	tc.logger.Success(fmt.Sprintf("✅ 订单价值: $%.2f ≥ $%.2f (符合要求)", notionalValue, minNotional))
+
 	return adjustedSize, nil
 }
 
