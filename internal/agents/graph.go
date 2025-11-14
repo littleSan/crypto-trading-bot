@@ -347,20 +347,7 @@ func (g *SimpleTradingGraph) BuildGraph(ctx context.Context) (compose.Runnable[m
 				if err != nil {
 					reportBuilder.WriteString(fmt.Sprintf("资金费率获取失败: %v\n\n", err))
 				} else {
-					// Interpret funding rate
-					var frInterpretation string
-					if fundingRate > 0.001 {
-						frInterpretation = "多头过热 ⚠️"
-					} else if fundingRate < -0.001 {
-						frInterpretation = "空头过热 ⚠️"
-					} else if fundingRate > 0 {
-						frInterpretation = "多头略占优"
-					} else if fundingRate < 0 {
-						frInterpretation = "空头略占优"
-					} else {
-						frInterpretation = "中性"
-					}
-					reportBuilder.WriteString(fmt.Sprintf("💰 资金费率: %.6f (%.4f%%) - %s\n\n", fundingRate, fundingRate*100, frInterpretation))
+					reportBuilder.WriteString(fmt.Sprintf("💰 资金费率: %.6f (%.4f%%)\n\n", fundingRate, fundingRate*100))
 				}
 
 				// Order book - use enhanced format
@@ -372,6 +359,16 @@ func (g *SimpleTradingGraph) BuildGraph(ctx context.Context) (compose.Runnable[m
 					orderBookReport := dataflows.FormatOrderBookReport(orderBook, 10)
 					reportBuilder.WriteString(orderBookReport)
 					reportBuilder.WriteString("\n")
+				}
+
+				// Open Interest
+				// 未平仓合约
+				openInterest, err := marketData.GetOpenInterest(ctx, binanceSymbol)
+				if err != nil {
+					reportBuilder.WriteString(fmt.Sprintf("未平仓合约获取失败: %v\n\n", err))
+				} else {
+					reportBuilder.WriteString(fmt.Sprintf("未平仓合约: 最新: %.2f  平均: %.2f\n\n",
+						openInterest["latest"], openInterest["average"]))
 				}
 
 				// 24h stats

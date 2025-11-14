@@ -750,6 +750,48 @@ func (m *MarketData) Get24HrStats(ctx context.Context, symbol string) (map[strin
 	return result, nil
 }
 
+// GetOpenInterest fetches the current open interest data
+// GetOpenInterest 获取当前未平仓合约数据
+func (m *MarketData) GetOpenInterest(ctx context.Context, symbol string) (map[string]float64, error) {
+	// Get current open interest
+	openInterest, err := m.client.NewGetOpenInterestService().
+		Symbol(symbol).
+		Do(ctx)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch open interest: %w", err)
+	}
+
+	currentOI, _ := strconv.ParseFloat(openInterest.OpenInterest, 64)
+
+	// Get historical open interest statistics (for average calculation)
+	// 获取历史未平仓数据统计（用于计算平均值）
+	histStats, err := m.client.NewOpenInterestStatisticsService().
+		Symbol(symbol).
+		Period("5m").
+		Limit(12). // Last 12 periods (1 hour if 5m intervals)
+		Do(ctx)
+
+	var avgOI float64
+	if err == nil && len(histStats) > 0 {
+		var sum float64
+		for _, stat := range histStats {
+			oi, _ := strconv.ParseFloat(stat.SumOpenInterest, 64)
+			sum += oi
+		}
+		avgOI = sum / float64(len(histStats))
+	} else {
+		avgOI = currentOI // Fallback to current if historical data unavailable
+	}
+
+	result := map[string]float64{
+		"latest":  currentOI,
+		"average": avgOI,
+	}
+
+	return result, nil
+}
+
 // FormatOrderBookReport formats order book data into a detailed report for LLM
 // FormatOrderBookReport 将订单簿数据格式化为 LLM 易读的详细报告
 func FormatOrderBookReport(orderBook map[string]interface{}, topN int) string {
@@ -759,74 +801,9 @@ func FormatOrderBookReport(orderBook map[string]interface{}, topN int) string {
 	askVolume := orderBook["ask_volume"].(float64)
 	bidAskRatio := orderBook["bid_ask_ratio"].(float64)
 
-	// Overall sentiment
-	var sentiment string
-	if bidAskRatio > 1.5 {
-		sentiment = "多头强势 💪"
-	} else if bidAskRatio < 0.67 {
-		sentiment = "空头强势 📉"
-	} else {
-		sentiment = "多空均衡 ⚖️"
-	}
-
-	report.WriteString(fmt.Sprintf("📊 订单簿深度分析（前 %d 档）:\n", topN))
+	report.WriteString(fmt.Sprintf("📊 当前订单簿深度分析（前 %d 档）:\n", topN))
 	report.WriteString(fmt.Sprintf("  买卖盘总量: 买 %.2f vs 卖 %.2f\n", bidVolume, askVolume))
-	report.WriteString(fmt.Sprintf("  买卖比: %.2f (%s)\n\n", bidAskRatio, sentiment))
-
-	// Parse asks (resistance levels)
-	asks := orderBook["asks"].([]futures.Ask)
-	if len(asks) > 0 {
-		report.WriteString("🔴 卖盘阻力位（由近到远）:\n")
-
-		// Calculate average ask volume for "large order" threshold
-		var totalAskVol float64
-		for i := 0; i < len(asks) && i < topN; i++ {
-			qty, _ := strconv.ParseFloat(asks[i].Quantity, 64)
-			totalAskVol += qty
-		}
-		avgAskVol := totalAskVol / float64(min(len(asks), topN))
-		largeOrderThreshold := avgAskVol * 1.5 // 1.5x average = large order
-
-		for i := 0; i < len(asks) && i < topN; i++ {
-			qty, _ := strconv.ParseFloat(asks[i].Quantity, 64)
-
-			largeOrderFlag := ""
-			if qty > largeOrderThreshold {
-				largeOrderFlag = " 🔥 大单墙"
-			}
-
-			report.WriteString(fmt.Sprintf("  $%s: %.4f%s\n",
-				formatPrice(asks[i].Price), qty, largeOrderFlag))
-		}
-		report.WriteString("\n")
-	}
-
-	// Parse bids (support levels)
-	bids := orderBook["bids"].([]futures.Bid)
-	if len(bids) > 0 {
-		report.WriteString("🟢 买盘支撑位（由近到远）:\n")
-
-		// Calculate average bid volume for "large order" threshold
-		var totalBidVol float64
-		for i := 0; i < len(bids) && i < topN; i++ {
-			qty, _ := strconv.ParseFloat(bids[i].Quantity, 64)
-			totalBidVol += qty
-		}
-		avgBidVol := totalBidVol / float64(min(len(bids), topN))
-		largeOrderThreshold := avgBidVol * 1.5 // 1.5x average = large order
-
-		for i := 0; i < len(bids) && i < topN; i++ {
-			qty, _ := strconv.ParseFloat(bids[i].Quantity, 64)
-
-			largeOrderFlag := ""
-			if qty > largeOrderThreshold {
-				largeOrderFlag = " 🔥 大单墙"
-			}
-
-			report.WriteString(fmt.Sprintf("  $%s: %.4f%s\n",
-				formatPrice(bids[i].Price), qty, largeOrderFlag))
-		}
-	}
+	report.WriteString(fmt.Sprintf("  买卖比: %.2f\n", bidAskRatio))
 
 	return report.String()
 }
