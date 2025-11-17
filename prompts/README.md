@@ -53,6 +53,9 @@ TRADER_PROMPT_PATH=prompts/trader_system.txt
 
 # 或使用固定止损策略（适合佛系交易者）
 # TRADER_PROMPT_PATH=prompts/trader_fixed_stoploss.txt
+
+# 或使用 JSON 结构化决策策略（多币种 JSON 输出，适合端到端调试）
+# TRADER_PROMPT_PATH=prompts/trader_json.txt
 ```
 
 ### 方法 2：创建自己的 Prompt
