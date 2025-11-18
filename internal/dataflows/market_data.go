@@ -908,7 +908,7 @@ func FormatLongerTimeframeReport(symbol string, timeframe string, ohlcvData []OH
 	if len(indicators.SMA_50) > lastIdx && !math.IsNaN(indicators.SMA_50[lastIdx]) {
 		sma50Val = indicators.SMA_50[lastIdx]
 	}
-	sb.WriteString(fmt.Sprintf("EMA(20): %.1f vs. 50-Period EMA: %.1f\n\n", ema20Val, sma50Val))
+	sb.WriteString(fmt.Sprintf("EMA(20): %.1f vs. EMA(50): %.1f\n\n", ema20Val, sma50Val))
 
 	// === ATR(3) vs 14-Period ATR ===
 	atr3Val := 0.0
@@ -919,7 +919,7 @@ func FormatLongerTimeframeReport(symbol string, timeframe string, ohlcvData []OH
 	if len(indicators.ATR) > lastIdx && !math.IsNaN(indicators.ATR[lastIdx]) {
 		atr14Val = indicators.ATR[lastIdx]
 	}
-	sb.WriteString(fmt.Sprintf("ATR(3): %.1f vs. 14-Period ATR: %.1f\n\n", atr3Val, atr14Val))
+	sb.WriteString(fmt.Sprintf("ATR(3): %.1f vs. ATR(14): %.1f\n\n", atr3Val, atr14Val))
 
 	// === 当前成交量 vs 平均成交量 ===
 	// === Current Volume vs Average Volume ===
