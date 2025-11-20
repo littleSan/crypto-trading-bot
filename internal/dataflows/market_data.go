@@ -650,10 +650,10 @@ func FormatIndicatorReport(symbol string, timeframe string, ohlcvData []OHLCV, i
 		currentMACD = indicators.MACD[lastIdx]
 	}
 
-	currentMACDSignal := 0.0
-	if len(indicators.Signal) > lastIdx && !math.IsNaN(indicators.Signal[lastIdx]) {
-		currentMACDSignal = indicators.Signal[lastIdx]
-	}
+	//currentMACDSignal := 0.0
+	//if len(indicators.Signal) > lastIdx && !math.IsNaN(indicators.Signal[lastIdx]) {
+	//	currentMACDSignal = indicators.Signal[lastIdx]
+	//}
 
 	currentRSI7 := 0.0
 	if len(indicators.RSI_7) > lastIdx && !math.IsNaN(indicators.RSI_7[lastIdx]) {
@@ -671,7 +671,7 @@ func FormatIndicatorReport(symbol string, timeframe string, ohlcvData []OHLCV, i
 	}
 
 	sb.WriteString(fmt.Sprintf("当前中间价 = %.1f, EMA(12) = %.1f, EMA(26) = %.1f\n", latestMidPrice, currentEMA12, currentEMA26))
-	sb.WriteString(fmt.Sprintf("MACD = %.1f, MACD_Signal = %.1f, RSI(7) = %.1f, RSI(14) = %.1f, ADX = %.1f\n\n", currentMACD, currentMACDSignal, currentRSI7, currentRSI14, currentADX))
+	sb.WriteString(fmt.Sprintf("MACD = %.1f,  RSI(7) = %.1f, RSI(14) = %.1f, ADX = %.1f\n\n", currentMACD, currentRSI7, currentRSI14, currentADX))
 	sb.WriteString(fmt.Sprintf("下述所有价格或信号数据均按时间从旧到新排列。\n\n"))
 
 	// === 日内数据（最近10期）===
@@ -723,9 +723,9 @@ func FormatIndicatorReport(symbol string, timeframe string, ohlcvData []OHLCV, i
 	if len(indicators.MACD) > lastIdx {
 		sb.WriteString(fmt.Sprintf("MACD: %s\n\n", formatSeries(indicators.MACD, startIdx, lastIdx, 1)))
 	}
-	if len(indicators.Signal) > lastIdx {
-		sb.WriteString(fmt.Sprintf("MACD_Signal: %s\n\n", formatSeries(indicators.Signal, startIdx, lastIdx, 1)))
-	}
+	//if len(indicators.Signal) > lastIdx {
+	//	sb.WriteString(fmt.Sprintf("MACD-DEA: %s\n\n", formatSeries(indicators.Signal, startIdx, lastIdx, 1)))
+	//}
 
 	// 4. BB_Upper + BB_Lower 波动率通道
 	// BB_Upper + BB_Lower Volatility Bands
@@ -1019,20 +1019,22 @@ func formatPrice(priceStr string) string {
 
 func convertTimeframe(tf string) string {
 	// Convert from format like "1h", "15m", "1d" to Binance interval format
+	// Binance supports: 1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M
+	// 币安支持的时间周期：1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M
 	switch tf {
-	case "1m":
-		return "1m"
-	case "5m":
-		return "5m"
-	case "15m":
-		return "15m"
-	case "1h":
-		return "1h"
-	case "4h":
-		return "4h"
-	case "1d":
-		return "1d"
+	case "1m", "3m", "5m", "15m", "30m": // 分钟级
+		return tf
+	case "1h", "2h", "4h", "6h", "8h", "12h": // 小时级
+		return tf
+	case "1d", "3d": // 天级
+		return tf
+	case "1w": // 周级
+		return tf
+	case "1M": // 月级
+		return tf
 	default:
+		// 不支持的时间周期，返回默认值 1h
+		// Unsupported timeframe, return default 1h
 		return "1h"
 	}
 }
