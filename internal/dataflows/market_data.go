@@ -223,23 +223,58 @@ func calculateSMA(data []float64, period int) []float64 {
 }
 
 // calculateEMA calculates Exponential Moving Average
+// calculateEMA 计算指数移动平均（跳过NaN值）
 func calculateEMA(data []float64, period int) []float64 {
 	result := make([]float64, len(data))
 	multiplier := 2.0 / float64(period+1)
 
-	// First EMA value is SMA
-	sum := 0.0
-	for i := 0; i < period && i < len(data); i++ {
-		sum += data[i]
-		result[i] = math.NaN()
-	}
-	if len(data) >= period {
-		result[period-1] = sum / float64(period)
+	// Find first valid index (skip leading NaN values)
+	// 找到第一个有效索引（跳过开头的NaN值）
+	firstValidIdx := 0
+	for i := 0; i < len(data); i++ {
+		if !math.IsNaN(data[i]) {
+			firstValidIdx = i
+			break
+		}
 	}
 
-	// Calculate EMA for remaining values
-	for i := period; i < len(data); i++ {
-		result[i] = (data[i]-result[i-1])*multiplier + result[i-1]
+	// Mark all values before we have enough data as NaN
+	// 标记数据不足时的值为NaN
+	for i := 0; i < firstValidIdx+period-1 && i < len(data); i++ {
+		result[i] = math.NaN()
+	}
+
+	// Check if we have enough data
+	// 检查是否有足够的数据
+	if firstValidIdx+period > len(data) {
+		return result
+	}
+
+	// Calculate first EMA value as SMA (skip NaN values)
+	// 计算第一个EMA值作为SMA（跳过NaN值）
+	sum := 0.0
+	validCount := 0
+	for i := firstValidIdx; i < firstValidIdx+period && i < len(data); i++ {
+		if !math.IsNaN(data[i]) {
+			sum += data[i]
+			validCount++
+		}
+	}
+
+	if validCount >= period {
+		result[firstValidIdx+period-1] = sum / float64(validCount)
+	} else {
+		return result
+	}
+
+	// Calculate EMA for remaining values (skip NaN in input)
+	// 计算剩余值的EMA（跳过输入中的NaN）
+	for i := firstValidIdx + period; i < len(data); i++ {
+		if !math.IsNaN(data[i]) && !math.IsNaN(result[i-1]) {
+			result[i] = (data[i]-result[i-1])*multiplier + result[i-1]
+		} else {
+			result[i] = math.NaN()
+		}
 	}
 
 	return result
@@ -592,17 +627,22 @@ func FormatIndicatorReport(symbol string, timeframe string, ohlcvData []OHLCV, i
 	}
 
 	lastIdx := len(ohlcvData) - 1
-	latestPrice := ohlcvData[lastIdx].Close
+	latestMidPrice := (ohlcvData[lastIdx].High + ohlcvData[lastIdx].Low) / 2
 
 	// === 标题 ===
 	// === Header ===
 	sb.WriteString(fmt.Sprintf("=== %s Market Report ===\n\n", symbol))
 
-	// === 当前值摘要（单行）===
-	// === Current Values Summary (Single Line) ===
-	currentEMA20 := 0.0
-	if len(indicators.EMA_20) > lastIdx && !math.IsNaN(indicators.EMA_20[lastIdx]) {
-		currentEMA20 = indicators.EMA_20[lastIdx]
+	// === 当前值摘要 ===
+	// === Current Values Summary ===
+	currentEMA12 := 0.0
+	if len(indicators.EMA_12) > lastIdx && !math.IsNaN(indicators.EMA_12[lastIdx]) {
+		currentEMA12 = indicators.EMA_12[lastIdx]
+	}
+
+	currentEMA26 := 0.0
+	if len(indicators.EMA_26) > lastIdx && !math.IsNaN(indicators.EMA_26[lastIdx]) {
+		currentEMA26 = indicators.EMA_26[lastIdx]
 	}
 
 	currentMACD := 0.0
@@ -610,14 +650,30 @@ func FormatIndicatorReport(symbol string, timeframe string, ohlcvData []OHLCV, i
 		currentMACD = indicators.MACD[lastIdx]
 	}
 
+	currentMACDSignal := 0.0
+	if len(indicators.Signal) > lastIdx && !math.IsNaN(indicators.Signal[lastIdx]) {
+		currentMACDSignal = indicators.Signal[lastIdx]
+	}
+
 	currentRSI7 := 0.0
 	if len(indicators.RSI_7) > lastIdx && !math.IsNaN(indicators.RSI_7[lastIdx]) {
 		currentRSI7 = indicators.RSI_7[lastIdx]
 	}
 
-	sb.WriteString(fmt.Sprintf("当前价格 = %.1f, 当前 EMA(20) = %.1f, 当前 MACD = %.1f, 当前 RSI(7) = %.1f\n\n",
-		latestPrice, currentEMA20, currentMACD, currentRSI7))
+	currentRSI14 := 0.0
+	if len(indicators.RSI) > lastIdx && !math.IsNaN(indicators.RSI[lastIdx]) {
+		currentRSI14 = indicators.RSI[lastIdx]
+	}
+
+	currentADX := 0.0
+	if len(indicators.ADX) > lastIdx && !math.IsNaN(indicators.ADX[lastIdx]) {
+		currentADX = indicators.ADX[lastIdx]
+	}
+
+	sb.WriteString(fmt.Sprintf("当前中间价 = %.1f, EMA(12) = %.1f, EMA(26) = %.1f\n", latestMidPrice, currentEMA12, currentEMA26))
+	sb.WriteString(fmt.Sprintf("MACD = %.1f, MACD_Signal = %.1f, RSI(7) = %.1f, RSI(14) = %.1f, ADX = %.1f\n\n", currentMACD, currentMACDSignal, currentRSI7, currentRSI14, currentADX))
 	sb.WriteString(fmt.Sprintf("下述所有价格或信号数据均按时间从旧到新排列。\n\n"))
+
 	// === 日内数据（最近10期）===
 	// === Intraday Data (Last 10 periods) ===
 	sb.WriteString(fmt.Sprintf("日内数据:\n\n"))
@@ -642,31 +698,57 @@ func FormatIndicatorReport(symbol string, timeframe string, ohlcvData []OHLCV, i
 		return "[" + strings.Join(values, ", ") + "]"
 	}
 
-	// 中间价（收盘价）/ Mid Price (Close Price)
-	var prices []float64
+	// 1. 中间价序列（High + Low）/ 2
+	// Mid Price Series (High + Low) / 2
+	var midPrices []float64
 	for i := startIdx; i <= lastIdx; i++ {
-		prices = append(prices, ohlcvData[i].Close)
+		midPrice := (ohlcvData[i].High + ohlcvData[i].Low) / 2
+		midPrices = append(midPrices, midPrice)
 	}
-	sb.WriteString(fmt.Sprintf("中间价(%s间隔): %s\n\n", timeframe, formatSeries(prices, 0, len(prices)-1, 1)))
+	sb.WriteString(fmt.Sprintf("中间价(%s间隔): %s\n\n", timeframe, formatSeries(midPrices, 0, len(midPrices)-1, 1)))
 
-	// EMA(20)
-	if len(indicators.EMA_20) > lastIdx {
-		sb.WriteString(fmt.Sprintf("EMA(20): %s\n\n", formatSeries(indicators.EMA_20, startIdx, lastIdx, 1)))
+	// 2. EMA(12) + EMA(26) 快慢EMA系统（MACD基础）
+	// EMA(12) + EMA(26) Fast/Slow EMA System (MACD basis: MACD = EMA12 - EMA26)
+	if len(indicators.EMA_12) > lastIdx {
+		sb.WriteString(fmt.Sprintf("EMA(12): %s\n\n", formatSeries(indicators.EMA_12, startIdx, lastIdx, 1)))
+	}
+	if len(indicators.EMA_26) > lastIdx {
+		sb.WriteString(fmt.Sprintf("EMA(26): %s\n\n", formatSeries(indicators.EMA_26, startIdx, lastIdx, 1)))
 	}
 
-	// MACD
+	// 3. MACD + MACD_Signal 趋势动能 + 交叉信号
+	// MACD + MACD_Signal: Trend Momentum + Crossover Signal
+	// 金叉(Golden Cross): MACD上穿MACD_Signal → 买入信号
+	// 死叉(Death Cross): MACD下穿MACD_Signal → 卖出信号
 	if len(indicators.MACD) > lastIdx {
 		sb.WriteString(fmt.Sprintf("MACD: %s\n\n", formatSeries(indicators.MACD, startIdx, lastIdx, 1)))
 	}
+	if len(indicators.Signal) > lastIdx {
+		sb.WriteString(fmt.Sprintf("MACD_Signal: %s\n\n", formatSeries(indicators.Signal, startIdx, lastIdx, 1)))
+	}
 
-	// RSI(7)
+	// 4. BB_Upper + BB_Lower 波动率通道
+	// BB_Upper + BB_Lower Volatility Bands
+	if len(indicators.BB_Upper) > lastIdx {
+		sb.WriteString(fmt.Sprintf("BB_Upper: %s\n\n", formatSeries(indicators.BB_Upper, startIdx, lastIdx, 1)))
+	}
+	if len(indicators.BB_Lower) > lastIdx {
+		sb.WriteString(fmt.Sprintf("BB_Lower: %s\n\n", formatSeries(indicators.BB_Lower, startIdx, lastIdx, 1)))
+	}
+
+	// 5. RSI(7) + RSI(14) 短期+标准超买超卖
+	// RSI(7) + RSI(14) Short-term + Standard Overbought/Oversold
 	if len(indicators.RSI_7) > lastIdx {
 		sb.WriteString(fmt.Sprintf("RSI(7): %s\n\n", formatSeries(indicators.RSI_7, startIdx, lastIdx, 1)))
 	}
-
-	// RSI(14)
 	if len(indicators.RSI) > lastIdx {
 		sb.WriteString(fmt.Sprintf("RSI(14): %s\n\n", formatSeries(indicators.RSI, startIdx, lastIdx, 1)))
+	}
+
+	// 6. ADX 趋势强度过滤器
+	// ADX Trend Strength Filter
+	if len(indicators.ADX) > lastIdx {
+		sb.WriteString(fmt.Sprintf("ADX: %s\n\n", formatSeries(indicators.ADX, startIdx, lastIdx, 1)))
 	}
 
 	return sb.String()

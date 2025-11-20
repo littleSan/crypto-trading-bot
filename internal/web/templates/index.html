@@ -937,10 +937,10 @@
                     }
 
                     // Update current balance display - 更新当前余额显示
-                    if (data.total_balance && data.total_balance.length > 0) {
-                        const latestBalance = data.total_balance[data.total_balance.length - 1];
+                    if (data.total_assets && data.total_assets.length > 0) {
+                        const latestAssets = data.total_assets[data.total_assets.length - 1];
                         document.getElementById('currentBalance').textContent =
-                            '$' + latestBalance.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+                            '$' + latestAssets.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
                     }
 
                     const ctx = document.getElementById('balanceChart').getContext('2d');
@@ -950,7 +950,7 @@
                         balanceChart.destroy();
                     }
 
-                    const balanceBounds = calculateAxisBounds(data.total_balance || []);
+                    const balanceBounds = calculateAxisBounds(data.total_assets || []);
                     const pnlBounds = calculateAxisBounds(data.unrealized_pnl || []);
 
                     balanceChart = new Chart(ctx, {
@@ -959,8 +959,8 @@
                             labels: data.timestamps,
                             datasets: [
                                 {
-                                    label: '总余额',
-                                    data: data.total_balance,
+                                    label: '总资产',
+                                    data: data.total_assets,
                                     borderColor: '#3b82f6',
                                     backgroundColor: 'rgba(59, 130, 246, 0.1)',
                                     tension: 0.4,
@@ -987,6 +987,11 @@
                         options: {
                             responsive: true,
                             maintainAspectRatio: false,
+                            interaction: {
+                                mode: 'nearest',
+                                axis: 'x',
+                                intersect: false
+                            },
                             plugins: {
                                 legend: {
                                     display: true,
@@ -1002,7 +1007,7 @@
                                     }
                                 },
                                 tooltip: {
-                                    mode: 'index',
+                                    mode: 'nearest',
                                     intersect: false,
                                     backgroundColor: 'rgba(30, 35, 50, 0.9)',
                                     titleColor: '#fff',
@@ -1119,9 +1124,13 @@
             fetch('/api/balance/current')
                 .then(response => response.json())
                 .then(data => {
+                    // Calculate total assets = total balance + unrealized PnL
+                    // 计算总资产 = 总余额 + 未实现盈亏
+                    const totalAssets = data.total_balance + data.unrealized_pnl;
+
                     // Update balance display - 更新余额显示
                     document.getElementById('currentBalance').textContent =
-                        '$' + data.total_balance.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+                        '$' + totalAssets.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 
                     if (!balanceChart) {
                         return;
@@ -1130,7 +1139,7 @@
                     // Add new data point - 添加新数据点
                     const timeLabel = data.timestamp.split(' ')[1];
                     balanceChart.data.labels.push(timeLabel);
-                    balanceChart.data.datasets[0].data.push(data.total_balance);
+                    balanceChart.data.datasets[0].data.push(totalAssets); // 使用总资产 / Use total assets
                     balanceChart.data.datasets[1].data.push(data.unrealized_pnl);
 
                     // Keep only last 100 points - 只保留最近100个点
