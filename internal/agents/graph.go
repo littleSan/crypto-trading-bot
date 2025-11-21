@@ -534,9 +534,6 @@ func (g *SimpleTradingGraph) BuildGraph(ctx context.Context) (compose.Runnable[m
 				emptyReport := `
 # 市场情绪分析（已禁用）
 
-⚠️ 市场情绪分析功能已禁用
-说明: 系统配置中禁用了情绪分析（ENABLE_SENTIMENT_ANALYSIS=false）
-建议: 如需启用，请在 .env 中设置 ENABLE_SENTIMENT_ANALYSIS=true
 `
 				g.state.SetSentimentReport(symbol, emptyReport)
 			}
@@ -797,22 +794,39 @@ func (g *SimpleTradingGraph) makeSimpleDecision() string {
 // makeLLMDecision uses LLM to generate trading decision with JSON structured output
 // makeLLMDecision 使用 LLM 生成交易决策，使用 JSON 结构化输出
 func (g *SimpleTradingGraph) makeLLMDecision(ctx context.Context) (string, error) {
-	// Detect if model is Qwen-based (doesn't support full JSON Schema)
-	// 检测是否是 Qwen 模型（不支持完整的 JSON Schema）
-	isQwenModel := strings.Contains(strings.ToLower(g.config.QuickThinkLLM), "qwen")
+	// List of backend URLs that only support JSON Object mode (not JSON Schema)
+	// 仅支持 JSON Object 模式（不支持 JSON Schema）的后端 URL 列表
+	jsonObjectModeBackends := []string{
+		"https://api.deepseek.com",                          // DeepSeek API
+		"https://dashscope.aliyuncs.com/compatible-mode/v1", // Alibaba Cloud Qwen API
+	}
+
+	// Check if backend URL requires JSON Object mode
+	// 检查后端 URL 是否需要 JSON Object 模式
+	backendURL := strings.TrimSpace(g.config.BackendURL)
+	backendURL = strings.TrimSuffix(backendURL, "/") // Remove trailing slash / 移除尾部斜杠
+
+	useJSONObjectMode := false
+	for _, backend := range jsonObjectModeBackends {
+		backend = strings.TrimSuffix(backend, "/")
+		if strings.HasPrefix(backendURL, backend) {
+			useJSONObjectMode = true
+			break
+		}
+	}
 
 	var cfg *openaiComponent.ChatModelConfig
 
-	if isQwenModel {
-		// Qwen models: use basic JSON Object mode (no schema)
-		// Qwen 模型：使用基础 JSON Object 模式（无 schema）
-		g.logger.Info("检测到 Qwen 模型，使用 JSON Object 模式（基础模式）")
+	if useJSONObjectMode {
+		// Backends that only support JSON Object mode (no schema)
+		// 仅支持 JSON Object 模式的后端（无 schema）
+		g.logger.Info(fmt.Sprintf("检测到需要 JSON Object 模式的后端: %s", backendURL))
 		cfg = &openaiComponent.ChatModelConfig{
 			APIKey:  g.config.APIKey,
 			BaseURL: g.config.BackendURL,
 			Model:   g.config.QuickThinkLLM,
-			// Enable basic JSON mode (Qwen compatible)
-			// 启用基础 JSON 模式（Qwen 兼容）
+			// Enable basic JSON mode (compatible with DeepSeek, Qwen, etc.)
+			// 启用基础 JSON 模式（兼容 DeepSeek、Qwen 等）
 			ResponseFormat: &openaiComponent.ChatCompletionResponseFormat{
 				Type: openaiComponent.ChatCompletionResponseFormatTypeJSONObject,
 			},
@@ -910,8 +924,8 @@ func (g *SimpleTradingGraph) makeLLMDecision(ctx context.Context) (string, error
 	// Call LLM
 	// 调用 LLM
 	modeStr := "JSON Schema"
-	if isQwenModel {
-		modeStr = "JSON Object（Qwen 兼容）"
+	if useJSONObjectMode {
+		modeStr = "JSON Object"
 	}
 	g.logger.Info(fmt.Sprintf("🤖 正在调用 LLM 生成交易决策 (%s 模式), 使用的模型:%v", modeStr, g.config.QuickThinkLLM))
 	response, err := chatModel.Generate(ctx, messages)
