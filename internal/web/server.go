@@ -455,6 +455,7 @@ func (s *Server) handleBalanceHistory(ctx context.Context, c *app.RequestContext
 	// 格式化为 Chart.js 可用的格式
 	var timestamps []string
 	var totalBalances []float64
+	var totalAssets []float64 // 总资产 = 总余额 + 未实现盈亏 / Total Assets = Total Balance + Unrealized PnL
 	var availableBalances []float64
 	var unrealizedPnLs []float64
 
@@ -490,6 +491,8 @@ func (s *Server) handleBalanceHistory(ctx context.Context, c *app.RequestContext
 	for _, h := range history {
 		timestamps = append(timestamps, h.Timestamp.Format(timeFormat))
 		totalBalances = append(totalBalances, h.TotalBalance)
+		totalAsset := h.TotalBalance + h.UnrealizedPnL // 计算总资产 / Calculate total assets
+		totalAssets = append(totalAssets, totalAsset)
 		availableBalances = append(availableBalances, h.AvailableBalance)
 		unrealizedPnLs = append(unrealizedPnLs, h.UnrealizedPnL)
 	}
@@ -497,6 +500,7 @@ func (s *Server) handleBalanceHistory(ctx context.Context, c *app.RequestContext
 	response := map[string]interface{}{
 		"timestamps":        timestamps,
 		"total_balance":     totalBalances,
+		"total_assets":      totalAssets, // 新增：总资产数据 / New: Total assets data
 		"available_balance": availableBalances,
 		"unrealized_pnl":    unrealizedPnLs,
 	}
